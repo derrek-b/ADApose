@@ -1,0 +1,16 @@
+name = "pomona/vault"
+version = "0.1.0"
+compiler = "v1"
+plutus = "v3"
+license = "MIT"
+description = "Pomona Finance — per-user auto-compounding vault validator"
+
+[repository]
+user = "derrek-b"
+project = "pomona"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2"
+source = "github"

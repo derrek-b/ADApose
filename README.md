@@ -17,7 +17,7 @@ Non-custodial auto-compounding yield vaults for Cardano LP positions.
 ## Stack
 
 - **Aiken** — validator language (compiles to Plutus V3)
-- **Lucid Evolution** — transaction building (executor + web)
+- **@spacebudz/lucid v0.20** — transaction building (executor + web; via JSR — see decisions.md D7, deliberately NOT Lucid Evolution)
 - **@minswap/sdk** — Minswap order construction, pool reads, calc helpers
 - **Blockfrost / Maestro** — chain indexing
 - **Mesh SDK** — CIP-30 wallet connect (web)
@@ -27,8 +27,10 @@ Non-custodial auto-compounding yield vaults for Cardano LP positions.
 
 Each user's position is a UTXO at the vault validator's script address, owner recorded
 in the datum. The 24/7 executor watches vaults, and when a vault's accrued rewards cover
-2× its marginal compound cost, it batches it into the next compound round: claim MIN from
-the Minswap farm → swap to pool assets → re-add liquidity → restake — one atomic
-transaction per batch. The validator enforces: executor can compound but never extract;
-only the owner's signature moves funds out. Fees: 4.5% of harvested emissions, enforced
-on-chain. See `docs/decisions.md` for the full design record.
+2× its marginal compound cost, it batches it into the next compound round: claim farm
+rewards from the target DEX → swap to pool assets → re-add liquidity → restake — one
+atomic batch. The validator enforces: executor can compound but never extract; only the
+owner's signature moves funds out. Fees: 4.5% of harvested emissions, enforced on-chain.
+**The target DEX is unsettled** — Minswap farming is co-sign-gated and WingRiders leads
+the pivot options (decisions.md D15/D16); a cross-DEX LP-router fallback is D17. See
+`docs/decisions.md` for the full design record.

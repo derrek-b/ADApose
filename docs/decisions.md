@@ -95,6 +95,9 @@ Bitcoin indexing — roadmap synergy) · Mesh SDK for CIP-30 wallet connect · Y
 for local devnet (UNVERIFIED — check current state Week 1) · preprod testnet (Minswap
 deployment exists there).
 
+**2026-07-16: toolchain verified locally** — aiken v1.1.23 installed via aikup;
+`aiken check` compiles the project manifest (plutus v3) and resolves stdlib v2 clean.
+
 No "deploy" step: validator hash = address; publish as reference script.
 
 ## D8 · Launch scope — 2026-07

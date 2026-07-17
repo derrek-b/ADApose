@@ -81,11 +81,82 @@ staking contract, owner-only withdrawal.
   PubKeyHash?)
 - Method 3: preprod round-trip from a throwaway validator — Week 1 spike, definitive
 
-**Preferred design if YES:** per-user vault UTXOs + ONE script-owned aggregated farm
-position per pool (custody isolation where it matters, cost aggregation where the
-harvest fee lives — saves ~0.5–0.7 ADA/user/cycle).
+**2026-07-16 re-check:** still no source in the minswap GitHub org (all repos listed;
+`minswap-dex-v2` holds only DEX validators). BUT `minswap/cardano-contracts-registry`
+→ `projects/minswap.json` publishes the deployed farm script HASHES (CertiK-audited):
+- Staking Contract v1 (Plutus V1): `9b85d5e8611945505f078aeededcbed1d6ca11053f61e3f9d999fe44`
+- Harvest Contract v1 (Plutus V1): `98df3b00a1500fcb77daa0520550fb088fc923399788b89637b9de59`
+- Staking Contract v2 (Plutus V2): `b15a1a010843e8afb6f963b03d452be815b533dad0cd23d819c2d201`
+  (plus MIN/MINt staking + vesting — token staking, not LP farming)
+This makes Method 1 concretely executable: query the v2 staking script address via
+Blockfrost, decode live position datums for the owner field's shape. On-chain script
+CBOR is also fetchable by hash (deployed UPLC, not source — behavior ground truth).
+
+**2026-07-16 Method 1 EXECUTED** (Koios mainnet, read-only; v2 Staking Contract at
+`addr1wxc45xspppp73takl93mq029905ptdfnmtgv6g7cr8pdyqgvks3s8`):
+- Position datum shape: `Constr 0 [owner_address, staked_asset_class, Int, [(asset, Int)]]`
+  where `owner_address` is a FULL Plutus `Address` (Credential + Option<StakeCredential>),
+  NOT a raw PubKeyHash. Datums are BY HASH, not inline. Contract active (positions
+  created this week).
+- **Structural answer: YES-shaped** — `ScriptCredential` (Constr 1) is representable in
+  the owner field; the type doesn't preclude script ownership. Consistent with the
+  order contract's "Script Owner Representation" (D5).
+- **Empirical answer: nobody does it** — scanned 2,000 live positions (oldest 1,000 +
+  newest 1,000 of the UTXO set): 2,000 pubkey owners, 0 script owners.
+- **What Method 1 CANNOT tell us:** whether the withdraw/harvest path AUTHORIZES a
+  script owner (an "owner script spent in same tx" branch like the DEX orders) or only
+  checks tx signatories — in which case a script-owned position is CREATABLE but the
+  LP is PERMANENTLY STUCK (scripts can't sign). The datum being write-anything makes
+  creation proof-free; only spending proves the design. Method 3 (preprod round-trip,
+  dust amounts, full deposit→harvest→withdraw cycle BEFORE any design commitment)
+  remains the decisive test. Prerequisite: confirm the farm v2 contract is deployed
+  on preprod and find its address.
+
+**2026-07-16 RESOLVED via UPLC decode — answer is NO, plus a bigger finding.**
+No preprod deployment exists (checked: zero UTXOs ever at v1/v2 staking credentials on
+preprod; mainnet control query confirms method). So we fetched the deployed mainnet v2
+staking script (2,890 bytes, plutonomy-optimized PlutusTx) and reverse-engineered the
+UPLC (artifacts vendored at `reference/farm-onchain/` — raw CBOR, UPLC, pseudocode + helper map):
+- **Owner auth = txSignedBy(owner_pkh) ONLY.** The owner-credential extraction has two
+  branches: PubKeyCredential → pkh used for signatory check; ScriptCredential → fails
+  (no alternative "owner script spent in same tx" path anywhere in the script; the only
+  address-equality logic is used for own-input/position matching, not auth).
+  ⇒ **script-owned positions are CREATABLE but PERMANENTLY UNSPENDABLE.** Preferred
+  design (script-owned aggregate farm position) is DEAD. HIGH confidence (structural).
+- **Every farm spend ALSO requires a hardcoded Minswap admin key:**
+  `7fe3920105a0aebaaecc1b935cd5ebbd3cc8c28336449d27378825e1` is a compiled-in constant
+  (script binding i_68 = "admin ∈ tx signatories"; i_69 = "owner pkh ∈ signatories").
+  **Empirically confirmed at scale (2026-07-17):** 390+ distinct mainnet spend txs
+  classified by redeemer tag → 100% carry the admin key in required_signers. Breakdown
+  of single-tag txs: Constr 0 (n=42+), Constr 1 (n=80+), Constr 2 (n=123+) — admin
+  required in ALL. Constr 2 carries an Int (input index → batched op). Recurring second
+  key `4f641455…` = likely Minswap ops/batcher.
+- **Redeemer Constr 3 is never used by users** (0 occurrences in 390+ spends). Its
+  handler could not be isolated by static analysis — the script is plutonomy-CPS-
+  obfuscated (Scott-encoded dispatch several selector-combinators deep; both an
+  automated symbolic reducer and manual bracket-tracing were inconclusive on the
+  tag→branch mapping). The decode DOES show one branch (pseudocode line ~823) that
+  guards on owner-sig (i_69) with NO admin check, followed by a return-to-owner output
+  fold — SHAPED like an owner-only emergency withdraw — but its reachable redeemer tag
+  is unproven. So **"can an owner unilaterally recover principal without Minswap?"
+  remains OPEN.** Decisive tests: (a) ask Minswap; (b) mainnet dust round-trip —
+  create a position, attempt owner-only-signed withdraw across redeemer variants.
+- **Implication — NEW OPEN QUESTION (supersedes the old one):** farm harvests are NOT
+  permissionless; they're co-signed by Minswap's backend (their app flow). Even an
+  executor-KEYED position cannot be harvested autonomously — our atomic compound tx
+  would need Minswap's signature. The fallback design is also impaired. Options to
+  evaluate: (a) ask Minswap about their co-sign API / composability intent (Discord
+  thread already open); (b) verify whether an owner-only redeemer variant enables
+  unilateral exit (funds-not-hostage still holds even if harvest is gated); (c) rescope
+  Phase 1 compounding to a DEX with permissionless farming; (d) manual/semi-automated
+  harvest cadence through Minswap's app as a bridge.
+
+**Original preferred design if YES (dead, kept for the record):** per-user vault UTXOs
++ ONE script-owned aggregated farm position per pool (custody isolation where it
+matters, cost aggregation where the harvest fee lives — saves ~0.5–0.7 ADA/user/cycle).
 **Fallback if NO:** executor-keyed aggregate farm position + validator-enforced
-accounting; custody trade-off disclosed, mitigate via timelock/multisig recovery.
+accounting; custody trade-off disclosed, mitigate via timelock/multisig recovery —
+now ALSO gated on the co-sign question above.
 
 ## D7 · Toolchain — 2026-07
 
@@ -112,6 +183,13 @@ Phase 2 (+4 wks): SundaeSwap V3 adapter, 2–3 more pools, frontend polish.
 NOT in scope: dynamic APY routing, CL (doesn't exist on Minswap), BTC pairs (bridged BTC
 on Cardano ≈ 10 coins total), token, shared vaults.
 
+**2026-07-17 REVISION (see D15/D16):** the Phase-1 Minswap target is blocked pending the
+farm co-sign answer (D6), and the Phase-2 SundaeSwap target is now WRONG — SundaeSwap
+farm rewards are off-chain team-computed with no on-chain harvest (D15), unsuitable for
+auto-compounding. **WingRiders is the leading Phase-1 candidate** (D16, pending the two
+open confirmations). Rescope both phases once the WingRiders reward-destination question
+and the Minswap Discord answer land.
+
 ## D9 · Market/bridge context (interview-verified 2026-07-12/13)
 
 - Cardano DEX LP TVL ~$40–65M (source-dependent); NIGHT/ADA pool 8.47% fee APR + 8.6%
@@ -124,3 +202,337 @@ on Cardano ≈ 10 coins total), token, shared vaults.
 - No live multi-DEX yield aggregator on Cardano. Genius Yield SLV = own-DEX only (~$8K
   TVL). VyFinance multi-DEX harvester = Catalyst proposal only. Optim Strategy Vaults =
   "Coming Soon", zero published spec. Poppy (F10) / Stargazer (F11): grant-gated, dead.
+
+## D10 · Stray UTxOs at the script address — Rescue path — 2026-07-16
+
+eUTxO has no receipt-time hook: an address is just a credential, so anyone can create
+an output at the vault address and the validator never runs on receipt (only on spend).
+Rejection is impossible — even more so than EVM, where omitting receive/fallback at
+least reverts plain ETH. Instead, make stray funds recoverable:
+
+- Plutus V3 spend handlers get `datum: Option<Data>` — datum-less UTxOs ARE spendable
+  if the script handles `None`, and soft-casting handles inline datums that don't parse.
+- **Rescue redeemer:** spendable IFF datum is `None` OR fails to cast to `VaultDatum`,
+  AND treasury-signed. Valid datums always fall through to the normal paths — the cast
+  check is the security boundary, so Rescue cannot touch real vaults and D2 is unweakened.
+- Treasury-signed (not open-to-anyone) so accidental senders aren't raced by bots;
+  return-to-sender is an off-chain customer-service action (ledger has no "from").
+- Case analysis: well-formed datum ⇒ just a vault, Withdraw recovers it. Unparseable/
+  missing inline datum ⇒ Rescue. Datum *hash* with unknown preimage ⇒ unrecoverable
+  on-chain, period — mitigate off-chain: frontend uses inline datums only; docs warn
+  never to send directly to the script address.
+- Indexer implication (already required): "UTXO at script address" ≠ "valid vault" —
+  filter by datum shape.
+
+## D11 · Validator topology — one validator per DEX, pool bound in datum — 2026-07-16
+
+One validator per DEX; all of that DEX's pools share ONE script address; each vault's
+pool binding lives in its datum (`pool_id` = Minswap V2 LP asset name).
+
+- NOT universal (all-DEX): Compound must verify DEX-specific order structures on-chain;
+  carrying every DEX's code path bloats script size + exunits (eats the 0.1–0.3 ADA
+  marginal budget, D4) and buys nothing — a new DEX needs new verification code anyway,
+  and any code change = new hash = new address = migration. Phase 2's SundaeSwap V3
+  adapter (D8) = a second validator, not a modification.
+- NOT per-pool (pool_id as parameter): logic is identical either way, but per-pool means
+  a reference-script publication + locked minUTxO per pool, N watched addresses, and a
+  pool→address map. Pool-in-datum ⇒ adding pool #2..N is pure off-chain config.
+- `pool_id` in datum is a SECURITY invariant, not bookkeeping: executor key is assumed
+  compromisable (D2); slippage bounds are measured against the pool the tx touches, so
+  an attacker-chosen pool makes them meaningless. Immutable pool binding pins Compound
+  to the owner's chosen pool; doubles as the asset class for value-conservation checks.
+- Parameters (executor, treasury, fee_bps, …) bake into the hash: changing ANY mints a
+  new address ⇒ full user migration. Acceptable at launch (rotation rare; migration =
+  withdraw + redeposit, always available). Pools are the dimension that multiplies —
+  which is exactly why pool_id must NOT be a parameter.
+- Batching unaffected: compound rounds are per-pool regardless (one shared MIN→asset
+  swap order + one deposit order per batch, D4); shared address means all vault inputs
+  in a batch share one reference-script witness.
+
+## D12 · Slippage — two-layer split, nothing in the datum — 2026-07-16
+
+"Slippage" is two different things; neither belongs in the datum (supersedes the
+`max_slippage_bps` datum field in the original vault.ak sketch, and refines D2's
+"slippage bound" wording):
+
+- **On-chain floor** (validator parameter, e.g. ~200 bps): the anti-theft invariant.
+  Must be on-chain — the executor is assumed compromisable (D2), and executor-side
+  checks are the attacker's code in that scenario. Checked against pool spot price read
+  from the pool UTXO as a REFERENCE INPUT: swap order min-receive ≥ (1−floor) × spot.
+  Loose + static is correct: value conservation already protects principal, so max
+  bleed = floor × one cycle's harvest; if conditions can't fill within the floor,
+  correct behavior is defer the compound (nearly free — rewards keep accruing, D3).
+- **Adaptive tolerance** (executor code): the real per-order min-receive, condition-
+  aware (volatility, harvest size), always tighter than the floor. Protects execution
+  quality, not custody.
+- NOT per-user in datum: batch swaps execute at ONE shared rate (D4), so a personal
+  bound only controls batch inclusion — set it tight and your vault just never
+  compounds (self-grief footgun). Compound swaps are reward-dust; nobody has a
+  meaningful preference. Withdraw needs no bound — owner signs their own tx.
+- Week 1 verify: parse a live preprod Minswap V2 pool datum for the spot-price read.
+
+## D13 · Fee accrual — fee_owed in datum, denominated in LP tokens — 2026-07-16
+
+`fee_owed: Int` (LP token units) accrues the treasury's 4.5% cut per-vault instead of
+settling every compound round.
+
+- Why accrue: fee dust vs minUTxO. Per-vault cut ≈ 0.027 ADA/cycle (4.5% of a ~0.6 ADA
+  trigger-sized harvest, D3/D4); even a 25-vault batch total (~0.7 ADA, in MIN) is
+  below the ~1.2 ADA minUTxO of a token output. Paying every round attaches more ADA
+  than the fee is worth.
+- Why LP denomination: the vault only holds LP — compound converts the whole harvest.
+  Validator already computes ΔLP for value conservation, so accrual is
+  `fee_owed += fee_bps × ΔLP` (no extra data, no price read). Settlement pays in the
+  asset the vault holds. LP appreciates with pool fees ⇒ treasury earns yield on its
+  unclaimed share automatically (deferral isn't an interest-free loan).
+- Compound is ACCRUE-ONLY — no settlement branch (see D14). Executor can't under-accrue
+  (validator recomputes), can't over-settle (capped by ledger), can't inflate the
+  ledger (mutation exactly determined). Compromised executor can delay treasury
+  revenue — D2's "grief cadence, can't extract" applied to our own revenue.
+- Naming note: field/variable names are FREE on-chain (datums serialize positionally;
+  UPLC erases identifiers) — name for the auditor. Trace strings DO embed in the
+  script; compile mainnet build with traces stripped.
+
+## D14 · Settlement on withdraw only + version ladder — 2026-07-16
+
+Fees settle ONLY at withdraw; v1 allows FULL withdraw only. (Supersedes D2's withdraw
+wording "or remainder returns with datum integrity" — that parenthetical was partial
+withdraw, dropped for v1.)
+
+- Withdraw-time settlement is mandatory in ANY accrual design (else closing the vault
+  erases the debt) — so making it the ONLY settlement deletes the compound-settle
+  branch entirely and keeps just the rule we couldn't avoid.
+- v1 Withdraw: owner-signed; vault UTXO consumed, NO continuing output; `fee_owed` LP →
+  treasury output; remainder → owner. No datum-mutation rules on the owner path at all.
+- Dust waiver: `fee_owed < dust_threshold` (parameter) ⇒ no treasury output required.
+  Protects tiny/short-stay users from minting a 1.2 ADA minUTxO output to deliver
+  ~0.03 ADA of fee. Bounded, deliberate undercollection.
+- Anti-drip rule (travels with partial withdraw if v2 adopts it): ANY withdraw settles
+  `fee_owed` IN FULL regardless of amount withdrawn — kills the 0.1%-at-a-time drip
+  attack by construction.
+- Asymmetry kept: Deposit top-ups remain allowed (growth isn't all-or-nothing; only
+  reduction is). Partial exit in v1 = withdraw-all → redeposit.
+- Costs accepted: treasury cashflow is hostage to user exits (irrelevant in Phase 1 —
+  own capital, symbolic revenue); revenue arrives as LP (treasury zaps out
+  operationally); withdraw path is no longer signature-only (any accrual design pays
+  this; we pay it once).
+- **Version ladder:** v1 = Deposit / Withdraw (full-only, settle, waiver) / Compound
+  (accrue-only) / Rescue. v2 = + Collect (treasury-signed, extracts EXACTLY fee_owed,
+  preserves everything else), partial withdraw TBD. v1→v2 is a new hash/address;
+  migration = withdraw-all (auto-settles all outstanding v1 fees) → deposit to v2.
+
+## D15 · DEX pivot survey — permissionless harvest as the gate — 2026-07-17
+
+Minswap's farm co-sign gate (D6) forced a survey of alternative DEXs. Gating criterion:
+can an executor build+submit a farm-reward harvest/compound tx WITHOUT the DEX
+operator's signature? Ranked (research + on-chain, 2026-07-17):
+
+| DEX | Farm reward mechanism | Verdict |
+|---|---|---|
+| **WingRiders** | Claimable WRT + partner rewards; agent-distributed; farm lock non-custodial | **Viable — drilling down (D16)** |
+| Splash | Permissionless ve(3,3) gauges (right model) | Not live — flagship product "coming soon", TVL withered, no testnet |
+| SundaeSwap | Off-chain team-computed SUNDAE emissions + scooper-gated settlement | DEAD — nothing on-chain to harvest; worse than Minswap. **Revises D8** |
+| Minswap | On-chain, but every farm spend needs hardcoded admin co-sign (D6) | DEAD without co-sign API |
+| Danogo | Bond/lending marketplace, no LP farm | DEAD — wrong product shape |
+
+**Meta-finding:** permissionless on-chain farm harvesting is RARE on Cardano. The
+batcher/agent model every AMM uses tends to push "compounding" into the DEX's own
+agent — rewards are either gated (can't automate) or already auto-compounded (nothing
+to automate). Explains D9's "no live multi-DEX yield auto-compounder exists" — likely
+structural, not incidental. Method/sources vendored at `reference/dex-survey/`.
+
+## D16 · WingRiders V2 — architecture + Shares Lock trace — 2026-07-17
+
+Open-source contracts (`WingRiders/dex-v2-contracts`, Plutarch) + on-chain decode.
+Source excerpts + Shares Lock UPLC decode vendored at `reference/wingriders-onchain/`.
+
+**Order/AMM model (`Request.hs`, `Pool.hs`):**
+- Everything is a Request (order): Swap / AddLiquidity / WithdrawLiquidity /
+  AddStakingRewards / Extract*. Redeemer = Apply (agent) | Reclaim (owner-signed).
+- `Apply` checks ONLY that a correct pool-hash input is present (delegates to pool) —
+  no agent signature at the request level. `Reclaim` = owner pubkey signature.
+- **`beneficiary` can be a SCRIPT address** (RequestDatum) — an applied order's output
+  can go to our vault. Opposite of Minswap's pubkey-only farm ownership.
+- Pool `evolve` DOES require a WingRiders **agent TOKEN** in an input (Pool.hs:98,307).
+  But it's a token-presence gate, NOT a hardcoded signature, and the pool enforces the
+  beneficiary + value conservation ⇒ agent CANNOT steal/redirect. This is a LIVENESS
+  dependency (submit request, their agent applies it), same as any Cardano AMM batcher
+  — categorically different from Minswap's per-spend admin signature on user funds.
+
+**Farm reward model — CORRECTS an earlier wrong read:**
+- Initial (wrong) conclusion "nothing to compound": based on seeing only
+  `AddStakingRewards` add reward value into pool reserves (ConstantProduct.hs:217 —
+  `qtyA += rewardsQuantity`). That is only the pool's ADA-staking stream (native
+  auto-compound, not ours to do).
+- WingRiders pays LPs ~5 streams; **WRT farm emissions + partner "double-yield" tokens
+  are CLAIMED, not auto-compounded** (WingRiders docs/Medium: "available to view via the
+  farming panel… available to claim"). So a compoundable surface DOES exist.
+
+**Shares Lock trace (registry "Shares Lock" `0237cc31…`, Plutus V1, ACTIVE 2026, 1000+
+positions; the farm-lock contract):**
+- Hardcodes WingRiders authority AssetClass `1c0d57fd…` + tokenName "A" (100k supply,
+  ~all in one WingRiders address) as a script parameter.
+- Redeemer dispatch (constructor tags 20–24):
+  - tags 20–23 + default = **OWNER paths**: use datum, reach `equalsByteString` (pubkey
+    compare), do NOT require the authority token.
+  - tag 24 = **AGENT path**: requires authority token "A", ignores datum owner — the
+    reward-processing/distribution path only WingRiders can run.
+- ⇒ **Locked LP is owner-recoverable with just the owner signature (non-custodial;
+  WingRiders cannot trap it)**, while **WRT rewards are PUSHED by WingRiders' agent per
+  epoch, not permissionlessly pulled**. HIGH confidence (structural trace + parameter id).
+
+**Product implication (refined 2026-07-17):** WingRiders is the first surveyed DEX where
+autonomous compounding is even POSSIBLE — but via the executor-keyed FALLBACK (D6), not
+the fully-non-custodial preferred design. Reasoning:
+- The farm-lock owner path is a signature check (pubkey), so — like Minswap — our SCRIPT
+  vault cannot be the farm-lock owner. To earn WRT, LP must sit in a pubkey-owned lock.
+  For automation that pubkey must be the executor's (a user-owned lock can't be
+  compounded without the user signing each cycle). ⇒ executor-keyed aggregate farm lock.
+- **Why this WORKS on WingRiders but NOT Minswap:** here the executor's OWN signature
+  suffices for LP ops (Apply needs no agent sig; Reclaim needs owner=executor) and reward
+  distribution is agent-PUSHED (no admin co-sign on executor funds). On Minswap even an
+  executor-keyed position couldn't harvest without the hardcoded admin co-sign. So the D6
+  fallback is dead on Minswap, viable on WingRiders.
+- **Custody:** NOT fully non-custodial — the aggregate farm-staked LP is under the
+  executor (multisig) pubkey while farming, same tradeoff as the D6 fallback. Mitigated:
+  the lock is owner(executor)-recoverable and WingRiders can neither trap nor redirect it
+  (agent token can't steal; owner path is sig-only). Disclose the custody model; consider
+  multisig executor + timelock recovery. The `beneficiary`-can-be-script property helps
+  at the LP-op layer (swap/add outputs can target our vault) but does NOT make the farm
+  lock itself script-ownable.
+- Dependencies: WingRiders agent liveness for LP-op application + WRT distribution.
+This is the honest ceiling: WingRiders enables an AUTOMATABLE, custody-MITIGATED product,
+not a fully-sovereign one. Still the best result of the survey.
+
+**CONFIRMED on mainnet (Blockfrost, 2026-07-17) — the farm-compounding model:**
+- Reward distribution: WingRiders' agent (authority token "A", operational pubkey
+  `addr1q8lj38m…`) batches all Shares Lock positions and PUSHES WRT **into each position
+  UTXO in place** — verified in live txs (block 13.67M) adding WRT to 8–30 positions per
+  batch. Positions live at the Shares Lock enterprise script `addr1wypr0np3…` (= hash
+  `0237cc31…`). Contract is very much live/current.
+- Position ownership: datum records a **PubKeyCredential owner**. A real owner-reclaim
+  (tx `49bc84d7…`) was authorized by a **vkey signature matching the datum owner pkh**
+  exactly (`f873a0f88d…`), no authority token, no WingRiders co-sign. ⇒ owner path is
+  pubkey-signature — **script vaults CANNOT own positions** (confirmed, matches trace).
+- Harvest = owner reclaims the position (which now contains accrued WRT). Owner-signed,
+  permissionless w.r.t. WingRiders.
+
+⇒ **Executor-keyed farm layer confirmed as the only option, and it WORKS:** executor (as
+pubkey owner) locks LP, WingRiders' agent auto-pushes WRT into the positions, executor
+periodically reclaims (own signature only) → swaps → re-adds → re-locks. No admin
+co-sign anywhere (unlike Minswap). Custody = executor-multisig over staked assets
+(mitigated: owner-reclaimable, WingRiders can neither trap nor steal). This is a viable,
+automatable, custody-DISCLOSED farm-compounding product on WingRiders — the fallback
+design (D6) that was dead on Minswap is alive here. Evidence in
+`reference/wingriders-onchain/`.
+
+## D17 · Fallback product — cross-DEX LP position router — 2026-07-17
+
+If farm-emission compounding falls through (Minswap co-sign answer bad AND WingRiders
+executor-keyed custody unacceptable), fallback pitch: a non-custodial app that manages
+the LP position itself — user deposits a pair (e.g. NIGHT/ADA), the service places/rebalances
+it to the best-return venue across DEXs. Scoped to Minswap + WingRiders (most-researched).
+
+**Fully automatable without custody/authorization gating — because it never touches farms**
+(where all the gates live). Per-operation, both platforms:
+- Add/remove liquidity = order/request; **script can be owner/receiver/beneficiary**;
+  batcher/agent applies it; the batcher CANNOT redirect (order enforces receiver) and
+  CANNOT permanently block (owner can cancel/reclaim). LP tokens are native tokens — our
+  script vault holds them directly, non-custodially, under the existing D2 invariants.
+- **Minswap AMM order path VERIFIED (source, `minswap-dex-v2`):** `ApplyOrder` only
+  requires the pool-batching withdrawal validator present; that validator requires an
+  authorized batcher from on-chain `GlobalSetting.batchers` (licensed-batcher liveness
+  dependency, like Sundae scoopers) — NOT a hardcoded signature and CANNOT steal.
+  `CancelOrderByOwner` supports 4 auth methods incl. **SpendScript** ⇒ our script can
+  reclaim its own orders. This is the SAME shape as WingRiders (D16), and categorically
+  different from the Minswap FARM admin co-sign (D6). Source vendored at
+  `reference/minswap-amm/`.
+
+**Net:** no gate can trap or steal; the only dependency is each DEX's licensed batchers
+(inherent to any Cardano AMM, non-custodial, but a censorship/liveness risk — a hostile
+DEX could refuse to batch our orders, forcing cancel-and-reclaim). Reuses the vault
+architecture (D1/D2) cleanly — swap "compound rewards" for "migrate to best venue".
+
+**Tradeoffs / committee Q&A:**
+- Yield is TRADING-FEE-only (fully non-custodial). Including farm APR re-inherits the
+  Minswap gate / WingRiders custody tradeoff → optional disclosed "boosted" tier.
+- Same-pair fee-APR spread across venues may be thin ⇒ real value is the bundle:
+  zap/single-sided entry, consolidated cross-DEX position + P&L, IL-aware +
+  profitability-gated rebalancing (reuse D3 trigger: migrate only when gap beats
+  round-trip cost).
+- Needs a cross-DEX APR/TVL data layer (not needed by the compounder).
+- Novel: D9 notes no live multi-DEX yield aggregator on Cardano; works TODAY on both.
+
+**D17 addendum · Competitive landscape re-verified — field still empty — 2026-07-17**
+Full re-sweep of the cross-DEX LP management space (all statuses checked directly on
+Catalyst/DefiLlama/project sites, 2026-07-17):
+- Genius Yield SLV: live, own-DEX only, TVL ~$8.3K (unchanged). Optim Strategy Vaults:
+  still "Coming soon", no spec. Poppy: archived. Stargazer: 1/4 milestones, stalled.
+- VyFi multi-DEX harvester: F13 proposal REJECTED; retrying in F15 as an "AI-driven
+  liquidity optimization layer" (200K ADA, pending vote, nothing built) — monitor.
+- NEW finding: **MuesliSwap "Liquidity Hub" (F14) — near-exact copy of the D17 concept**
+  (multi-DEX LP-side aggregator w/ liquidity router) — REJECTED by Catalyst voters.
+  Also "Liquidity Pool Aggregator" (F13, ADA Markets) — REJECTED. An F14 proposal
+  itself states "no existing yield aggregators on Cardano".
+- Adjacent (DexHunter/Indigo/Liqwid/FluidTokens/Strike): no LP-management product or
+  roadmap. DexHunter = swap aggregation only.
+⇒ **Space confirmed empty as of 2026-07: nothing live, nothing on testnet, no spec
+published.** Double-edged for the pitch: (1) established DEX teams saw the same gap
+(concept validation) but (2) three Catalyst proposals for this exact idea were REJECTED
+by voters and nobody funded it privately — committee will ask "why did others fail /
+is the market too small?" (Cardano DEX LP TVL ~$40–65M, D9). Have that answer ready.
+
+## D18 · Invariant redesign for the executor-keyed variant (WingRiders) — 2026-07-17
+
+Systematic pass of D2/D10–D14 against the executor-keyed farm design (D16). Root cause
+of every change: value physically LEAVES the vault into executor-owned farm positions
+(Zone C), where our validator never runs. Vault becomes a claim state machine:
+Idle → Entering → Farming → WithdrawRequested → consumed.
+
+**SUPERSEDES (for this variant only — the original invariants stand for any future
+script-owned design):**
+- D2 headline: "compromised executor cannot extract funds" is FALSE for farmed value.
+  A hostile executor key can spend all Zone C positions without touching a vault.
+  Mitigations are operational: threshold/MPC executor key, capped own capital (D8),
+  public proof-of-reserves monitor (Σ tagged positions ≥ Σ vault claims — ship it in
+  the frontend; converts trust-us into verify-us). Withdrawal of farmed value is
+  executor-liveness-dependent (idle value stays owner-sovereign).
+- D2 inv 3 (value only grows): replaced by "value may only exit into a well-formed WR
+  AddLiquidity request for the datum's pool" — checkable at Enter (request UTXO is an
+  output of the validated tx).
+- D12 floor: enforceable at entry/exit orders only. Compound-cycle swap floor is dead
+  weight — validator can't run there, and it defends against bleed by an executor who
+  could take the whole position anyway. Adaptive tolerance (executor code) + Tier-2
+  detection covers the cycle.
+- D13 per-compound accrual: dead (no vault touch per cycle). Fee computed ONCE at
+  Settle: `fee = fee_bps × max(0, LP_returned − LP_principal)`, **denominated in LP
+  units** — LP count only grows via compounded emissions (trading fees appreciate
+  in-pool without changing count), so LP-units delta isolates emissions exactly and
+  preserves D13's fee-on-emissions-only intent. ADA-denominated would silently tax
+  trading fees too.
+
+**SURVIVES UNCHANGED:** D2 inv 1 (executor auth, now on transitions), inv 4 (datum
+immutables), D10 Rescue, D14 (settle-at-withdraw-only is now forced; dust waiver;
+full-withdraw-only v1), D11 topology (pool-in-datum; slippage_floor param retained for
+entry/exit).
+
+**Redeemer set becomes:** Deposit (owner) · WithdrawIdle (owner-only, Tier-1, idle value)
+· RequestWithdraw (owner flags state) · Enter (executor: idle → WR request + claim
+recorded) · Reconcile (executor: Entering → Farming, see below) · Settle (executor:
+enforce split on presented value — user gets all but fee, fee capped by formula,
+treasury only other recipient) · Rescue.
+
+**Key mechanism — Reconcile via reference input:** actual LP principal is unknowable at
+Enter (batcher fills later; request only carries minWantedShares as lower bound). Fix:
+after fill, executor spends vault once more WITH the Shares Lock position as a
+REFERENCE INPUT; validator reads the position's actual LP amount from the referenced
+UTXO and requires new datum principal_lp == it. Chain is the witness — no attestation.
+**Load-bearing dependency:** validator must verify the referenced position belongs to
+THIS vault ⇒ the stake-credential tagging question (week1-verify D16 item (b)) is
+promoted from optimization to the anchor of on-chain principal integrity. If tagging
+fails, principal_lp degrades to executor-attested (Tier 2). → Most important dust test.
+
+**Enforcement scorecard (Tier 1 = validator-enforced, 2 = publicly detectable, 3 =
+executor trust):** idle sovereignty T1 · entry form/pool T1 · principal T1-if-tagging
+· immutables T1 · fee formula T1 (on presented value) · pro-rata split T2 · cycle
+slippage T3+T2 · no-extraction T3 · farmed-withdraw liveness T3.

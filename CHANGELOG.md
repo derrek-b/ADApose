@@ -25,9 +25,10 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ### DEX target research
 
-- Minswap V2 farming confirmed unusable for auto-compounding (D6): script addresses
+- Minswap V2 farming confirmed GATED for auto-compounding (D6): script addresses
   can't own farm positions + every farm spend needs Minswap's hardcoded admin co-sign
-  (390+ mainnet spends verified). Deployed farm script decoded, vendored at
+  (390+ mainnet spends verified) — workable only via a co-sign API or platform
+  collaboration (Discord answer pending). Deployed farm script decoded, vendored at
   `reference/farm-onchain/`.
 - Five-DEX pivot survey (D15): SundaeSwap (off-chain team-computed rewards) and Danogo
   (no LP farm) ruled out; Splash not live; **WingRiders is the leading candidate**.
@@ -41,6 +42,23 @@ components share one repo lifecycle; split per-component if they diverge.
   order path (`reference/minswap-amm/`) is non-custodial/un-gated (licensed-batcher
   liveness dependency, script owners can cancel) — same as WingRiders. Fully automatable
   because it avoids farms entirely; fee-yield only (non-custodial), farm APR optional.
+- Competitive landscape re-verified (D17 addendum): cross-DEX LP routing/management
+  field confirmed EMPTY on Cardano as of 2026-07 — nothing live, nothing on testnet.
+  New finding: MuesliSwap's F14 "Liquidity Hub" (same concept) was rejected by Catalyst
+  voters, as were two similar proposals — concept validated by established teams, but
+  never market-tested; committee should expect the "why did others fail" question.
+
+### Validator design — executor-keyed variant
+
+- D18: systematic invariant redesign for the executor-keyed WingRiders variant. Vault
+  becomes a claim state machine (Idle → Entering → Farming → WithdrawRequested);
+  Compound redeemer dies (cycle never touches vaults), replaced by Enter / Reconcile /
+  Settle; D2's "executor cannot extract" is explicitly superseded for farmed value
+  (mitigation: MPC key + capped capital + public proof-of-reserves monitor). Fee
+  computed once at Settle in LP units — `fee_bps × (LP_returned − LP_principal)` —
+  which isolates compounded emissions exactly (in-pool trading-fee appreciation rides
+  untaxed). New Reconcile mechanism reads actual LP principal from the farm position
+  as a reference input; depends on stake-credential tagging (top dust-test priority).
 
 ### Docs & tooling
 

@@ -10,7 +10,6 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@lucid-evolution/lucid": "latest",
     "@minswap/sdk": "latest",
     "dotenv": "^16.4.0"
   },

@@ -89,8 +89,10 @@ accounting; custody trade-off disclosed, mitigate via timelock/multisig recovery
 
 ## D7 · Toolchain — 2026-07
 
-Aiken (validators + unit tests) · Lucid Evolution (tx building; Minswap SDK itself
-depends on lucid) · @minswap/sdk · Blockfrost or Maestro (Maestro notable: also does
+Aiken (validators + unit tests) · **@spacebudz/lucid** (tx building — CORRECTED
+2026-07-16: @minswap/sdk's whole API speaks SpaceBudz Lucid v0.20 via the JSR registry,
+NOT Lucid Evolution; standardized on SpaceBudz to avoid dual tx-builder stacks; JSR
+needs `.npmrc` → `@jsr:registry=https://npm.jsr.io`) · @minswap/sdk · Blockfrost or Maestro (Maestro notable: also does
 Bitcoin indexing — roadmap synergy) · Mesh SDK for CIP-30 wallet connect · Yaci DevKit
 for local devnet (UNVERIFIED — check current state Week 1) · preprod testnet (Minswap
 deployment exists there).

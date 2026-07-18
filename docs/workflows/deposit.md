@@ -1,3 +1,4 @@
+<!-- Source: validators/validators/vault.ak -->
 # Workflow: User Deposit
 
 **Path:** user wallet → (Minswap DEPOSIT order for raw assets ‖ direct order UTXO for

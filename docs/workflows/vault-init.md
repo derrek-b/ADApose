@@ -1,3 +1,4 @@
+<!-- Source: validators/validators/vault.ak -->
 # Workflow: Vault Init (STUB — duty list only)
 
 **Status: not yet designed.** This stub exists to collect every one-time init duty and

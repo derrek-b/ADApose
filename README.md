@@ -12,7 +12,7 @@ Non-custodial auto-compounding yield vaults for Cardano LP positions.
 | `executor/` | Node.js/TS service — chain watcher, trigger logic, batched compound txs (off-chain) |
 | `web/` | React frontend — wallet connect, deposit/withdraw, position view |
 | `reference/` | Vendored Minswap material: AMM V2 spec, formula.md, farm docs, SDK snapshot |
-| `docs/` | Design decisions, cost model, open questions |
+| `docs/` | Design decisions, workflow specs (`docs/workflows/`), cost model, open questions |
 
 ## Stack
 
@@ -38,12 +38,16 @@ the key-holding machine. Full command list in `CLAUDE.md`.
 
 ## The product in one paragraph
 
-Each user's position is a UTXO at the vault validator's script address, owner recorded
-in the datum. The 24/7 executor watches vaults, and when a vault's accrued rewards cover
-2× its marginal compound cost, it batches it into the next compound round: claim farm
-rewards from the target DEX → swap to pool assets → re-add liquidity → restake — one
-atomic batch. The validator enforces: executor can compound but never extract; only the
-owner's signature moves funds out. Fees: 4.5% of harvested emissions, enforced on-chain.
-**The target DEX is unsettled** — Minswap farming is co-sign-gated and WingRiders leads
-the pivot options (decisions.md D15/D16); a cross-DEX LP-router fallback is D17. See
-`docs/decisions.md` for the full design record.
+Users deposit NIGHT, ADA, and/or LP tokens — any mix, one signature — into a pooled
+vault (one per Minswap V2 pool) and receive fungible share tokens; the exchange rate
+lives in the vault's datum. Deposits and redemptions ride owner-cancellable order
+UTxOs that the 24/7 executor batches against the vault; the vault's LP is staked into
+an executor-keyed Minswap farm position, and when accrued rewards cover ~2× the cycle
+cost the executor runs the multi-tx compound cycle (harvest → swap → re-add liquidity
+→ restake) and records the gain on-chain, minting the 4.5% performance fee as treasury
+shares. Six non-negotiable invariants (D20-N) guard the share accounting on-chain.
+Custody, honestly stated: shares are a redemption claim dependent on executor liveness
+against an executor-keyed farm — but principal is never hostage (trustless
+owner-only emergency withdraw, D19). Phase 1: pooled NIGHT/ADA vault on Minswap;
+WingRiders is the documented second venue. Full record: `docs/decisions.md`;
+per-action specs: `docs/workflows/`.

@@ -840,3 +840,55 @@ second batcher fee). **Necessarily executor policy, not a validator check** — 
 validator sees only its own tx and cannot know pending order UTxOs exist; sequencing
 is, however, publicly auditable from on-chain ordering (Tier-2/N5 envelope). Full
 treatment when `compound-cycle.md` is written.
+
+### D21 addendum · Order value handling — value-derived lp, pass-through payout — 2026-07-18
+
+Two rules for what an order's VALUE means at Apply: **(1) `lp_i` is defined as the
+amount of the pool's exact LP asset id in the order's value — never a datum claim**
+(a datum-declared amount would let a lookalike-token order mint real shares; with the
+value-derived definition, lookalikes yield lp=0 → miss their own `min_shares` →
+inert). **(2) Everything in the value that isn't LP passes through to the payout**
+— one generalized n4 equation `payout_i = order_value_i − lp_i×LP + shares_i×share`
+covers shares, returning min-ADA, and any hand-crafted extras in the same tx.
+Chosen over strict value-shape rejection (extras → cancellable-only) after working
+the alternatives: absorbing extras into the vault has no exit (Rescue is
+datum-fail-only) and invites token-dust minUTxO bloat of the long-lived vault UTXO;
+strict rejection strands valid LP behind a full Cancel; pass-through is equal-or-
+cheaper on-chain (the equation replaces strict's shape assertion PLUS the narrower
+payout check), auto-returns extras, keeps the vault clean, and closes the
+extras-to-executor-change leak. Executor filter still excludes orders whose riding
+ADA can't fund their own payout minUTxO (left to Cancel). Honest path unaffected:
+web orders and Minswap fills are {ADA, LP} by construction.
+
+## D22 · Off-chain structure — DEX adapters, shared/ package, blueprint as the bridge — 2026-07-18
+
+Three structural rules for the TS side, decided before workflow docs start
+referencing them:
+
+**1. DEX adapters (executor).** Platform-specific construction lives behind an
+adapter interface (`adapters/minswap_v2`, later `adapters/wingriders`):
+`quoteLpOut`, `buildDepositOrder`, `buildHarvestTx`, `parseFill`, … — adapters
+build platform-shaped txs/orders and return standardized shapes. Warranted because
+the platforms differ at every layer: order contracts, datum shapes, batcher models
+(licensed batchers vs agent-pushed), farm mechanics (co-sign API vs none).
+**Hard rule: the D19 CBOR verifier sits OUTSIDE the adapter boundary.** Adapters
+build; the independent verifier re-parses whatever any adapter produced against
+pre-stated intent before the hot key signs. Verification inside an adapter would let
+a compromised adapter (D19's exact threat) verify its own lies. Builders are
+pluggable; the gate is not.
+
+**2. `shared/` package (npm workspace — local, registry-free, compatible with the
+D19 exact-pin discipline).** One implementation, consumed by web + executor, for
+everything both must agree on exactly: datum codecs (`OrderDatum`/`VaultDatum`
+build + parse), exchange-rate math (the floor-rounding share calcs — web preview
+must match the validator bit-for-bit), config constants (`DEPOSIT_TTL`, `T_max`,
+`margin`, `DEFAULT_TOLERANCE`, per-network addresses/policy ids). Motivating case:
+deposit.md's deadline/tolerance floors are defined by executor behavior but enforced
+by web validation — same constants, one source.
+
+**3. Blueprint as the validators↔TS bridge.** Aiken can't import TS; `vault.ak`
+stays the source of truth and the TS lib mirrors it. The honest link is the CIP-57
+blueprint: `aiken build` emits `plutus.json` (validator hashes + datum schemas) —
+`shared/` derives addresses and validates its datum shapes FROM that artifact, never
+from hand-copied constants, so "validator changed, TS didn't" fails at build time,
+not on mainnet. Drift beyond the schema level is caught by round-trip test vectors.

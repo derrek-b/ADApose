@@ -59,6 +59,10 @@ separate flow. Unrelated tokens (e.g. MIN) are out of scope for Phase 1 (D21).
    ```
    `min_shares` for the asset leg is computable at signing time *because* the Minswap
    step carries `minimumLP` — the LP amount is bounded before the fill happens.
+   **Bootstrap precondition:** all of this math divides by `total_lp` — on a
+   freshly-inited pool both totals are whatever the N2 dead-shares scheme set them to
+   (open question in `vault-init.md`). First-deposit quoting is undefined until that
+   scheme is fixed; expect to hit this on emulator day one.
 
    **Rate-neutrality of deposits (why queued deposits can't hurt each other):** every
    applied order mints `floor(lp_i × total_shares / total_lp)` — numerator and
@@ -224,7 +228,9 @@ Cancel (web shows a "reclaim" button). The executor never gains a recovery power
 2. Per order, filter to **eligible**:
    ```
    parses?          datum casts to OrderDatum, else ignore (Rescue territory)
-   funded?          value[lpUnit] > 0 and consistent with Deposit action
+   funded?          lp_i := order value's pool-LP amount > 0 (value-derived — Step D);
+                    riding ADA covers the payout output's minUTxO (an order too fat
+                    to fund its own payout is left to Cancel)
    fresh?           deadline > now + BATCH_LATENCY_BUFFER (build+submit+settle margin)
    satisfiable?     floor(value.lp * total_shares / total_lp) >= min_shares at current datum rate
    ```
@@ -281,11 +287,25 @@ inputs:   vault UTXO            redeemer ApplyOrders
           order UTxOs (1..n)    redeemer Apply
 outputs:  vault' UTXO           value += Σ lp_i
                                 datum: total_lp += Σ lp_i, total_shares += Σ shares_i
-          per order i:          { shares_i × share_asset, order's minUTxO ADA } → payout_i
+          per order i:          order_value_i − lp_i×LP + shares_i×share_asset → payout_i
+                                (pass-through: shares + min-ADA + any extras)
 mint:     share_policy: +Σ shares_i
 validity: upper bound < min(deadline_i)
 signers:  executor hot key
 ```
+
+Network fee: the executor pays it (it's the signer) — recouped by the 4.5%
+performance fee (D3/D4 economics). A depositor's only costs are the order's minUTxO
+(returned with the shares) and, on the asset leg, Minswap's 2 ADA batcher fee.
+
+**Value handling (per order — the gap-2 rules):** `lp_i` is *defined* as the amount
+of this pool's exact LP asset id in the order's **value**, never a datum claim — a
+datum-declared amount would let a lookalike-token order mint real shares. Everything
+in an order's value that isn't LP **passes through to its payout** (the `n4` equation
+below): hand-crafted extras bounce back to the user in the same tx, never enter the
+vault (no token-dust bloat of the long-lived vault UTXO — minUTxO scales with value
+size), never reach executor change (leak closed). The honest path never exercises
+this: web-built orders and Minswap fills are `{ADA, LP}` by construction.
 
 Batch pricing (proposed): **all orders in one batch price at the uniform pre-batch
 rate** `(total_shares, total_lp)` — order-independent, no intra-batch sequencing to
@@ -299,7 +319,7 @@ Vault validator checks, by invariant name (each becomes a named check + `aiken c
 | `n1_totals` | `total_lp' = total_lp + Σ lp_i` and `total_shares' = total_shares + Σ shares_i`, deltas computed only from datum + spent-order values; vault output value delta equals Σ lp_i exactly (no leak to executor) |
 | `n3_round_down` | each `shares_i = floor(lp_i * total_shares / total_lp)` — floor, never round/ceil |
 | `pool_scope` | every spent order's `pool_nft` equals MY thread NFT — cross-pool orders can't leak into this batch (pairs with N6) |
-| `n4_full_service` | every spent order's owner receives exactly `shares_i` + its min-ADA back at `payout_i`; `shares_i >= min_shares_i`; validity range beats every deadline |
+| `n4_full_service` | every spent order's `payout_i` receives exactly `order_value_i − lp_i×LP + shares_i×share_asset` (shares + min-ADA + extras pass through — nothing strands, nothing leaks); `shares_i >= min_shares_i`; validity range beats every deadline |
 | mint gate | share policy: mint amount == Σ shares_i and vault UTXO spent in same tx |
 
 ## Step E — executor build, verify, sign, submit

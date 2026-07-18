@@ -43,7 +43,10 @@
 //                                  or their orders are bricked, an N4 violation)
 //   payout: Address             -- full address (payment + stake cred) — shares/refunds
 //                                  land with the user's stake rights intact
-//   action: Deposit(assets) | Redeem(shares)
+//   action: Deposit | Redeem(shares)
+//                                  -- Deposit carries NO amount: lp is value-derived
+//                                  (gap-2 rule, deposit.md Step D); Redeem TBD in
+//                                  redeem.md
 //   min_out: Int                -- user's slippage/limit protection
 //   deadline: POSIXTime
 //
@@ -64,7 +67,10 @@
 //                    at datum rate (N3: round assets DOWN); total_lp & total_shares
 //                    updated exactly (N1); every order satisfied or untouched
 //                    (no cherry-pick griefing); every spent order's pool_nft == MY
-//                    thread NFT (cross-pool orders can't leak into this batch)
+//                    thread NFT (cross-pool orders can't leak into this batch);
+//                    lp_i = pool-LP amount in the order's VALUE (never datum-claimed);
+//                    payout_i gets order_value − lp_i + shares_i (pass-through:
+//                    extras return to user — never vault-absorbed, never executor)
 //   EnterFarm     -- executor-signed: vault LP → Minswap farm via D19 API tx;
 //                    farmed_lp += exact LP leaving, total_lp unchanged (N1); value may
 //                    ONLY move to the farm path (order/position outputs verified,

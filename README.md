@@ -11,6 +11,7 @@ Non-custodial auto-compounding yield vaults for Cardano LP positions.
 | `validators/` | Aiken project — the vault validator (on-chain) |
 | `executor/` | Node.js/TS service — chain watcher, trigger logic, batched compound txs (off-chain) |
 | `web/` | React frontend — wallet connect, deposit/withdraw, position view |
+| `shared/` | (planned) TS workspace package — datum codecs, rate math, config shared by web + executor (D22) |
 | `reference/` | Vendored Minswap material: AMM V2 spec, formula.md, farm docs, SDK snapshot |
 | `docs/` | Design decisions, workflow specs (`docs/workflows/`), cost model, open questions |
 

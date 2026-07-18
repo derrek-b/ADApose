@@ -12,9 +12,23 @@ result contradicts the assumption, write the superseding D-entry.
       (first-depositor inflation attack fails in emulator), `n3_` rounding property
       tests (mint rounds shares down / redeem rounds assets down, remainder stays —
       fuzz across amounts incl. 1-lovelace edges), `n4_` order cancel always succeeds
-      owner-signed + ApplyOrders cannot cherry-pick/skip/reorder to a user's detriment.
-- [ ] **D20 · Share-token UX check:** confirm a plain wallet (Eternl/Lace) displays the
-      share token sanely for the demo (token registry entry needed?).
+      owner-signed + ApplyOrders cannot cherry-pick/skip/reorder to a user's detriment,
+      `n6_` a counterfeit vault UTXO at our own validator address (doctored datum, no
+      thread NFT) cannot trigger a share mint. (N5 is a comms invariant — no test.)
+- [ ] **D20 · Share-token UX check:** DECIDED 2026-07-18 — metadata via **CIP-68 baked
+      into vault init** (share token named with CIP-67 `(333)` label; init mints the
+      paired `(100)` reference NFT with metadata datum — name is frozen at first mint,
+      so this can't be retrofitted). Verify on preprod: Eternl (and Lace if possible)
+      actually renders the CIP-68 name/ticker/decimals for a `(333)` token. CIP-26
+      registry PR = optional mainnet polish; wallet support for the *testnet* registry
+      is spotty and script-policy attestation there is unverified.
+- [ ] **D21 · Batcher fill policy for script receivers (the deposit path's one open
+      question):** on-chain, a fill MUST deliver LP + our exact inline datum to our
+      order validator (verified from source 2026-07-18 — `reference/minswap-amm/
+      order_validation.ak:1196`); unproven is whether the licensed batcher
+      *operationally* fills orders whose `successReceiver` is a third-party script.
+      Settle with a preprod dust test (DEPOSIT order, `customReceiver` via SDK —
+      doubles as our first executor code) + ask in the open Minswap Discord thread.
 
 - [x] ~~**D16 · WingRiders custody model (the go/no-go):**~~ **RESOLVED 2026-07-17**
       (Blockfrost mainnet): farm positions record PUBKEY owners; owner-reclaim tx
@@ -52,7 +66,10 @@ result contradicts the assumption, write the superseding D-entry.
       resting on their word + our decode rather than an executed tx; (c) exercise one
       full API cycle with dust (first-deposit → harvest → stake-more → withdraw-all)
       and build the **CBOR verifier** (never blind-sign server-built txs — check
-      rewards→owner, restake amounts, no value leakage, expected signers).
+      rewards→owner, restake amounts, no value leakage, expected signers); (d) confirm
+      **pending-rewards readability**: can accrued-unharvested farm rewards be read
+      (chain data or API) precisely enough to drive the compound trigger, the web's
+      dynamic tolerance floor, and the trigger-imminent warning (deposit.md Step A/C)?
 - [ ] **~~D13 ΔLP visibility~~ → D20 · RecordHarvest enforcement:** the harvest cycle
       never touches the vault, so what stops RecordHarvest from lying about ΔLP?
       Proposed: include the executor's farm POSITION UTXO as a reference input —

@@ -15,39 +15,77 @@
 //// │                  UTxOs, batched by executor, owner-cancellable anytime  │
 //// │ N5 CUSTODY HONESTY (comms) — shares are a redemption claim against an   │
 //// │                  executor-keyed farm; never describe as more sovereign  │
+//// │ N6 THREAD NFT    one-of-one auth NFT = THE vault UTXO; validator and    │
+//// │                  mint policy key on the NFT, never on the address       │
 //// └─────────────────────────────────────────────────────────────────────────┘
 
 // Vault datum sketch (one UTXO per pool):
 //   pool_id: ByteArray          -- immutable; Minswap V2 LP asset name (D11 carries over)
-//   total_shares: Int           -- N1: the only denominator that exists
-//   farmed_lp: Int              -- N1: LP units entered into the farm (datum-tracked,
-//                                  updated only on validator-checked transitions)
+//   total_shares: Int           -- N1: the only share denominator that exists
+//   total_lp: Int               -- N1: ALL pool-owned LP (vault-held + farmed) — the
+//                                  exchange-rate numerator. Added by D20 addendum
+//                                  2026-07-18: pricing by farmed_lp alone understates
+//                                  the rate while deposits sit unfarmed between
+//                                  ApplyOrders and EnterFarm, over-minting shares.
+//   farmed_lp: Int              -- custody sub-ledger: the slice of total_lp inside the
+//                                  executor-keyed farm (never used for pricing;
+//                                  invariant: farmed_lp <= total_lp)
 //   share_asset: AssetName      -- the pool's share token name (mint policy paired)
 
-// Order datum sketch (separate order validator, N4):
-//   owner: VerificationKeyHash  -- only signer who can Cancel
+// Order datum sketch (separate order validator, N4 — ONE script for ALL pools,
+// like the vault; pool identity lives in the datum, D21 addendum):
+//   pool_nft: AssetId           -- the pool's thread NFT (N6) — strongest possible
+//                                  pool identifier (one-of-one by construction);
+//                                  scopes this order to exactly one vault
+//   canceller: AuthMethod       -- who may Cancel: Signature(pkh) | SpendScript(hash)
+//                                  (Minswap's proven split, D21 addendum — an Address
+//                                  can't sign; script wallets need spend-script auth
+//                                  or their orders are bricked, an N4 violation)
+//   payout: Address             -- full address (payment + stake cred) — shares/refunds
+//                                  land with the user's stake rights intact
 //   action: Deposit(assets) | Redeem(shares)
 //   min_out: Int                -- user's slippage/limit protection
 //   deadline: POSIXTime
+//
+// Order validator spending paths:
+//   Cancel  -- canceller authorized (Signature | SpendScript), no other condition,
+//              anytime — the user's only recovery path, never executor-dependent (N4)
+//   Apply   -- only if an input carrying this order's pool_nft (the thread NFT) is
+//              spent in the same tx (delegation-by-presence, N6-anchored; vault does
+//              the accounting checks)
+//   Rescue  -- treasury-signed, ONLY when datum is missing/fails to cast to OrderDatum
+//              (D10 model via D21 addendum — backstop for bricked sends; datums that
+//              cast are NEVER rescuable; emission policy: inline datums only)
 
 // Vault redeemer sketch:
 //   ApplyOrders   -- executor-signed batch: apply deposit/redeem orders against the
 //                    vault. Checks: share mint == Σ deposits at datum exchange rate
-//                    (N3: round shares DOWN); redemption payouts at datum rate
-//                    (N3: round assets DOWN); totals updated exactly (N1);
-//                    every order satisfied or untouched (no cherry-pick griefing)
+//                    total_lp/total_shares (N3: round shares DOWN); redemption payouts
+//                    at datum rate (N3: round assets DOWN); total_lp & total_shares
+//                    updated exactly (N1); every order satisfied or untouched
+//                    (no cherry-pick griefing); every spent order's pool_nft == MY
+//                    thread NFT (cross-pool orders can't leak into this batch)
 //   EnterFarm     -- executor-signed: vault LP → Minswap farm via D19 API tx;
-//                    farmed_lp += exact LP leaving (N1); value may ONLY move to the
-//                    farm path (order/position outputs verified, D12 floor on swaps)
-//   RecordHarvest -- executor-signed, post-compound: farmed_lp += harvested ΔLP;
+//                    farmed_lp += exact LP leaving, total_lp unchanged (N1); value may
+//                    ONLY move to the farm path (order/position outputs verified,
+//                    D12 floor on swaps)
+//   RecordHarvest -- executor-signed, post-compound: total_lp and farmed_lp += ΔLP;
 //                    treasury share mint == fee_bps × ΔLP-equivalent shares (D20 fee;
 //                    LP-units discipline — fee on emissions, never in-pool growth)
 //   Rescue        -- treasury-signed; ONLY missing/unparseable datums (D10, unchanged)
 
 // Share mint policy sketch:
-//   mint/burn allowed ONLY when the pooled vault UTXO for this pool is spent in the
-//   same tx with ApplyOrders/RecordHarvest (delegation by presence); amounts checked
-//   by the vault validator. N2: init path mints DEAD_SHARES to an unspendable output.
+//   mint/burn allowed ONLY when the vault UTXO carrying this pool's THREAD NFT (N6 —
+//   never merely "a UTXO at the vault address") is spent in the same tx with
+//   ApplyOrders/RecordHarvest; amounts checked by the vault validator, which also
+//   requires the NFT in the continuing output. N2: init path mints DEAD_SHARES to an
+//   unspendable output.
+//   CIP-68 metadata from day one (decided 2026-07-18): share token asset name carries
+//   the CIP-67 (333) fungible label; init also mints the paired (100) reference NFT
+//   whose inline datum holds {name, ticker, decimals, logo}, parked at a
+//   treasury-controlled output. Label is part of the asset name = frozen at first
+//   mint; retrofitting would mean a new token + migration. (CIP-26 registry PR =
+//   optional mainnet polish later.)
 
 // Off-chain (executor) invariants that pair with this file — D19:
 //   never blind-sign: every tx (API-built or SDK/Lucid-built) re-parsed from raw CBOR

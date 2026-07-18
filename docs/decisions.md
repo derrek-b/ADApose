@@ -670,7 +670,7 @@ preserves. These are restated in CLAUDE.md and as the header of vault.ak so they
 loaded into every working session.
 
 - **N1 — Datum-truth accounting.** Exchange rate derives ONLY from datum-tracked
-  totals (`total_shares`, farmed-LP total). NEVER from reading UTXO balances. Kills
+  totals (`total_shares`, `total_lp`). NEVER from reading UTXO balances. Kills
   donation-rate manipulation; makes D10 stray UTxOs accounting-irrelevant.
 - **N2 — Dead shares at init.** First deposit mints a fixed virtual/dead share offset
   (burned to an unspendable key or held by the script forever). Kills the
@@ -686,3 +686,157 @@ loaded into every working session.
   the validator, dependent on executor liveness, against an executor-keyed farm
   position. No pitch, doc, or UI may describe the pooled vault as more sovereign than
   that. (Comms invariant — reviewed at every user-facing artifact.)
+- **N6 — Thread-NFT authenticity** (added 2026-07-18). A one-of-one state thread NFT,
+  minted at vault init, lives in the vault UTXO forever: the vault validator requires
+  it in the continuing output, and the share mint policy authorizes mint/burn on the
+  NFT's presence — never on "some UTXO at the vault address." Without it, a
+  counterfeit vault UTXO parked at our own validator address with a doctored datum
+  (huge `total_lp`, tiny `total_shares`) passes the validator's checks *relative to
+  its own fake datum* and mints real shares redeemable against the real vault — a
+  drain. All off-chain reads (web preview, executor indexer) locate the vault by the
+  NFT, not the address. Test `n6_`: a counterfeit vault UTXO cannot trigger a share
+  mint. ("One vault UTXO per pool" was D20 design prose; N6 is its enforcement.)
+
+### D20 addendum · `total_lp` joins the datum (N1 gap fix) — 2026-07-18
+
+Surfaced writing `docs/workflows/deposit.md`: the original sketch priced shares off
+`farmed_lp` alone, but deposited LP sits in the vault UTXO between ApplyOrders and
+EnterFarm — during that window the rate numerator is understated, so new depositors
+mint too many shares and dilute holders. Fix: datum tracks **`total_lp`** (all
+pool-owned LP, vault-held + farmed) as the sole exchange-rate numerator; `farmed_lp`
+remains as the farm-custody sub-ledger (`farmed_lp <= total_lp`, never used for
+pricing). Transitions: ApplyOrders moves `total_lp` only; EnterFarm moves `farmed_lp`
+only; RecordHarvest moves both by ΔLP. Preserves N1 (indeed, is required by it);
+N2–N5 untouched.
+
+### D20 addendum · Share-token metadata = CIP-68 at init — 2026-07-18
+
+Share token asset name carries the CIP-67 `(333)` fungible label from first mint;
+vault init also mints the paired `(100)` reference NFT whose inline datum holds
+`{name, ticker, decimals, logo}` (treasury-parked). Chosen over a CIP-26 registry
+entry because it's on-chain (works identically on preprod for the demo, no PR-review
+latency, no unverified script-policy attestation); CIP-26 remains optional mainnet
+polish. Decided now because the label is part of the asset name and frozen at first
+mint — retrofit = new token + migration. Details land in `docs/workflows/vault-init.md`
+when written; preprod wallet-rendering check on week1-verify.
+
+## D21 · Deposit path — any mix of pool assets + LP, one signature, via chained Minswap order — 2026-07-18
+
+**Decision:** a Phase-1 deposit accepts any combination of {pool asset A, pool asset B,
+LP tokens} for the target pool (NIGHT, ADA, and/or NIGHT/ADA LP), in **one user
+signature**. Unrelated tokens are out of scope (would need a swap leg; revisit
+post-demo). The web builds one tx with up to two order outputs:
+
+1. **Asset leg (NIGHT and/or ADA, any ratio):** a Minswap V2 `DEPOSIT` order —
+   imbalanced/single-sided is native (`DepositAmount.SPECIFIC_AMOUNT
+   {depositAmountA, depositAmountB}`, one side may be 0; no separate zap step exists
+   in V2) — with `successReceiver` = **our order validator address** and
+   `successReceiverDatum` = our deposit-order datum, `refundReceiver` = the user.
+   Minswap's batcher mints the LP and delivers it directly into our order queue.
+2. **LP leg:** a direct order UTXO at our order validator (Minswap's deposit order
+   mints LP from assets; it cannot accept LP — hence a second output, not a second
+   code path).
+
+The vault/validator surface is untouched: our validators only ever see LP-denominated
+orders. A mixed deposit credits shares in two chunks (LP leg at the next ApplyOrders;
+asset leg after Minswap's batcher fills), each priced at its application-time datum
+rate. `min_shares` for the asset leg is computable at signing because the Minswap step
+carries its own `minimumLP` slippage bound: `min_shares = floor(minimumLP × datum
+rate) − tolerance`. The 2 ADA Minswap batcher fee rides on the user's tx — depositors
+pay their own conversion; the pool never subsidizes it.
+
+**Custody chain (N4/N5-clean):** user → Minswap order (canceller = user; kill/refund
+path pays `refundReceiver` = user directly, bypassing us) → our order UTXO
+(owner-cancellable) → vault. The asynchronous NIGHT→LP conversion gap is carried by
+Minswap's infrastructure — never by our exchange rate (which would let depositors dump
+slippage on holders) and never by executor custody of raw user principal (which would
+expand Tier-3 beyond farmed value and resurrect the pending-state machine D20 killed).
+
+**Verified (2026-07-18, from source — citations):**
+- Imbalanced `DEPOSIT` + `minimumLP` + `killable`: `reference/sdk/src/types/order.ts`
+  579, 793.
+- Delivery-to-receiver is **on-chain enforced**: pool batching validator calls
+  `validate_order_receiver` on every fill (`reference/minswap-amm/pool_validator.ak`
+  ~333); `ScriptCredential` receivers explicitly supported with a mandatory datum
+  match — `EODInlineDatum(h)` forces an inline fill datum hashing (blake2b-256 of
+  serialization) to `h` (`reference/minswap-amm/order_validation.ak` 1185–1215,
+  vendored today from their public repo). A batcher cannot fill our order without
+  attaching our exact datum inline at our address.
+- SDK supports it first-class: `DexV2CustomReceiver` (`reference/sdk/src/dex-v2.ts`
+  31); the SDK hashes the datum into the order and stores the preimage in an extra
+  inline-datum UTXO for the batcher (`buildUtxoToStoreDatum`,
+  `src/utils/tx.internal.ts` — script receivers are an anticipated case).
+
+**Remaining unverified (deferred, on week1-verify):** whether Minswap's licensed
+batcher *operationally* fills orders with third-party script `successReceiver`s —
+forced if filled, but fill-willingness is off-chain policy. Settle by preprod dust
+test (first executor code) + asking in the open Minswap Discord thread.
+
+Supersedes the LP-only v1 framing briefly proposed in `docs/workflows/deposit.md`'s
+first draft. Full step-by-step: `docs/workflows/deposit.md`.
+
+### D21 addendum · Order datum splits `canceller` from `payout` — 2026-07-18
+
+The order datum's owner field is two fields: **`canceller: AuthMethod`**
+(`Signature(pkh) | SpendScript(hash)`) and **`payout: Address`** (full address).
+Rationale: an address can't sign — a signature-only Cancel would brick orders from
+script-based wallets (multisig/shared), violating N4 for that user class — and a bare
+pkh payout would strand the user's stake rights on the share output. This is Minswap's
+own proven pattern (`canceller` + `successReceiver`, vendored
+`reference/minswap-amm/order_validator.ak`; their other two auth methods, withdrawal
+and mint, are deferred as exotic). Web always sets `canceller` =
+Signature(connected wallet), `payout` = connected wallet's full address. Datum shape
+is frozen pre-build because changing it later means a new validator hash, new address,
+and a migration.
+
+### D21 addendum · Order validator gets the D10 Rescue path — 2026-07-18
+
+The order validator adds a third spending path: **Rescue — treasury-signed,
+reachable ONLY when the datum is missing or fails to cast to `OrderDatum`** — the
+exact D10 model transplanted (unconstrained treasury spend; forcing a treasury-address
+payout gains little since a compromised treasury key re-spends anyway). Rationale:
+both legitimate paths (Cancel, Apply) begin by reading the datum, so a cast failure
+bricks the UTXO — and on the asset leg this is not just dust risk: whatever
+`successReceiverDatum` our web attaches is what Minswap's validator forces onto the
+fill output, so a frontend serialization bug would deliver a user's *real deposit LP*
+already bricked. Rescue is the backstop for our own bugs. Scope notes: (a) datums that
+cast but hold nonsense values are NOT rescuable — they cancel fine, no treasury power
+over well-formed orders; (b) datum-by-hash outputs with a lost preimage are
+unspendable by protocol (preimage required before any validator runs) — no rescue
+possible; policy is we only ever emit inline datums (Minswap fills are forced inline
+by `EODInlineDatum`). N5 wording: "malformed sends are recoverable at treasury
+discretion" — discretionary recovery, never a guarantee.
+
+### D21 addendum · ONE order validator for all pools; `pool_nft` in the datum — 2026-07-18
+
+The order validator is a single script shared by every pool (symmetric with the vault:
+one script, one address, pool UTxOs distinguished by datum + thread NFT — D20/D11
+logic). Three on-chain artifacts total no matter how many pools; no re-hash /
+re-publish / new `successReceiver` address per pool. Consequence: pool identity must
+live in the order datum — new field **`pool_nft`** (the pool's thread-NFT asset id,
+N6 — one-of-one by construction, so the strongest identifier). Checks it anchors:
+order Apply = "an input carrying my `pool_nft` is spent in this tx"; vault
+ApplyOrders mirror = "every spent order's `pool_nft` equals MY thread NFT" (named
+check `pool_scope`) — without which an ApplyOrders on vault X could consume orders
+meant for vault Y and run X's accounting on them. Costs nothing with one pool;
+frozen-datum logic says decide it now.
+
+### D21 addendum · Harvest-priority sequencing (anti-snipe, executor policy) — 2026-07-18
+
+When the compound trigger fires, **`RecordHarvest` jumps the per-pool vault-spend
+queue: no ApplyOrders lands between trigger and harvest.** Rationale: deposits are
+rate-neutral to each other (proportional mint), but a deposit applied just before a
+harvest buys at the pre-harvest rate and captures a pro-rata slice of yield earned by
+capital that farmed the whole accrual window — and with the trigger's weekly cadence
+cap (D3), a harvest can be ~a week of pool yield, making the just-in-time snipe
+(deposit large pre-harvest, redeem after, skim the jump on big notional) genuinely
+attractive. Deposits-first ("no RecordHarvest while deposits pending") would
+institutionalize it. Post-harvest application is also the fair direction for pending
+redeems — they're paid the yield they actually sat through. Cost: quotes crossing a
+harvest may miss `min_shares` → default tolerance sized above a max-accumulation
+harvest; terminal-unsatisfiable deposits recover via the web's "Cancel & re-deposit"
+flow (the filled leg already holds LP → retry is an LP-leg order, fresh quote, no
+second batcher fee). **Necessarily executor policy, not a validator check** — a
+validator sees only its own tx and cannot know pending order UTxOs exist; sequencing
+is, however, publicly auditable from on-chain ordering (Tier-2/N5 envelope). Full
+treatment when `compound-cycle.md` is written.

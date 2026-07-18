@@ -48,6 +48,16 @@ components share one repo lifecycle; split per-component if they diverge.
   voters, as were two similar proposals — concept validated by established teams, but
   never market-tested; committee should expect the "why did others fail" question.
 
+### Minswap resolution (2026-07-18)
+
+- Minswap answered all four integration questions (doc vendored at
+  `reference/farm-docs/minswap-farm.md`, GraphQL endpoint + mutations verified live):
+  official co-sign API for farm spends, trustless owner-only emergency withdraw
+  (constructor 3 — corroborates our decode's untraced branch), script positions
+  confirmed unsupported, composability welcomed. **Auto-compounding on Minswap is
+  viable** via executor-keyed positions (D19); D8's Minswap Phase-1 target restored.
+  Minswap-vs-WingRiders is now a product choice, not a technical gate.
+
 ### Validator design — executor-keyed variant
 
 - D18: systematic invariant redesign for the executor-keyed WingRiders variant. Vault

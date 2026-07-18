@@ -536,3 +536,53 @@ fails, principal_lp degrades to executor-attested (Tier 2). → Most important d
 executor trust):** idle sovereignty T1 · entry form/pool T1 · principal T1-if-tagging
 · immutables T1 · fee formula T1 (on presented value) · pro-rata split T2 · cycle
 slippage T3+T2 · no-extraction T3 · farmed-withdraw liveness T3.
+
+## D19 · Minswap farm integration RESOLVED — co-sign API + trustless exit — 2026-07-18
+
+Minswap team answered all four Discord questions (their integration doc vendored at
+`reference/farm-docs/minswap-farm.md`; GraphQL endpoint + all named mutations verified
+live 2026-07-18 by field-probing `k-app-monorepo-mainnet-prod.minswap.org/graphql`).
+**Resolves the D6 successor question: auto-compounding on Minswap IS possible.**
+
+1. **Co-sign API (official path):** farm spends (harvest/stake/withdraw) are built AND
+   co-signed server-side via GraphQL mutations (`buildMultipleHarvestsV2`,
+   `buildStakeDepositV2`, `buildStakeWithdrawV2/AllV2`, `buildFirstDepositV2`); we add
+   the owner signature and submit. `buildMultipleHarvestsV2` harvests multiple pools in
+   ONE tx. They explicitly welcome composability and offered key-API provisioning.
+2. **Trustless exit CONFIRMED:** `EMERGENCY_WITHDRAW` = redeemer constructor **3** —
+   owner-signature-only, buildable without Minswap, forfeits pending rewards.
+   **Corroborates our UPLC decode exactly**: the owner-only branch we found but couldn't
+   map (D6 addendum "tag 3 unproven") is precisely this. Two independent sources agree.
+   ⇒ principal is NEVER hostage; max loss on Minswap-API death = one cycle's rewards.
+3. **Script-owned positions: NO** (confirmed; matches D6 decode). One position per
+   owner per pool ("first deposit fails if owner has a position") ⇒ executor-keyed
+   AGGREGATE position per pool — the D6 cost-aggregation model, via executor keys.
+
+**Architecture implications:**
+- Same custody model as WingRiders (D16/D18): executor-keyed positions; D18's claim
+  state machine / Enter-Reconcile-Settle / Tier framework carries over to Minswap
+  nearly wholesale. D2/D4's "one atomic batch tx" is dead on BOTH DEXs — the compound
+  cycle is multi-tx (API harvest → swap order → batcher fill → add-liq order → fill →
+  API stake).
+- Minswap API = LIVENESS dependency for harvest/stake, NOT a custody gate (emergency
+  withdraw bounds the damage). New failure mode vs WingRiders: rewards require calling
+  their backend each cycle; WingRiders pushes rewards agent-side with no API.
+- **NEW ENGINEERING INVARIANT: never blind-sign server-built CBOR.** The executor must
+  decode each returned tx and verify against expectations (rewards→executor, correct
+  restake amount, datum integrity, no value leakage, expected signers) before signing
+  with the hot key. This is a hard requirement of the API model.
+
+**Minswap vs WingRiders — both now viable; the choice is product/ops:**
+| | Minswap | WingRiders |
+|---|---|---|
+| TVL / target pool | ~10× larger; NIGHT/ADA (D8/D9) | smaller (~$4M) |
+| Harvest dependency | their API each cycle (liveness) | none — agent pushes WRT |
+| Exit w/o platform | emergency withdraw (forfeits pending) | normal reclaim (keeps rewards) |
+| Official support | explicit, key-API offered | none sought yet |
+| SDK / tooling | vendored @minswap/sdk | lower-level cab lib |
+| Test venue | NO preprod farm — mainnet dust only | preprod deployment exists |
+
+**Status: D8 Phase-1 Minswap target RESTORED as viable** (executor-keyed variant,
+custody-disclosed per D18). Next: provision API access; dust-test emergency withdraw
+(constructor 3) to close the last unverified claim; decide Minswap-first vs
+WingRiders-first vs both — a product decision, no longer a technical gate.

@@ -36,19 +36,20 @@ result contradicts the assumption, write the superseding D-entry.
       `reference/farm-onchain/`): owner auth is txSignedBy(pkh) only, ScriptCredential
       owners fail; positions would be creatable but unspendable. No preprod farm
       deployment exists. No spike needed.
-- [ ] **D6 · Harvest automation (NEW — the successor question):** CONFIRMED at scale
-      (390+ mainnet spends, 2026-07-17) — redeemer tags 0/1/2 (all observed user
-      actions) require Minswap's hardcoded co-sign key (`7fe39201…`), 100%. Harvests
-      are NOT permissionless; autonomous compounding is blocked regardless of custody
-      design. Remaining: (a) does Minswap offer/permit a co-sign API for third-party
-      protocols? (Discord thread open); (b) **owner-unilateral-exit question** — Constr
-      3 is never used by users and static decode couldn't isolate its auth (CPS-
-      obfuscated); one branch looks owner-only but unproven. Resolve via mainnet dust
-      round-trip (owner-only-signed withdraw across redeemer variants) or by asking
-      Minswap. If principal is recoverable owner-only, custody concern softens; if not,
-      positions are Minswap-hostage. (c) if harvests can't be automated: co-sign
-      integration / manual cadence bridge / rescope Phase 1 to a permissionless-farm
-      DEX. **This gates the whole executor design.**
+- [x] ~~**D6 · Harvest automation (the successor question)**~~ **RESOLVED 2026-07-18
+      (D19):** (a) Minswap DOES offer a co-sign API — official GraphQL integration path,
+      mutations verified live by field-probing; composability explicitly welcomed.
+      (b) owner-unilateral exit CONFIRMED — `EMERGENCY_WITHDRAW` = constructor 3,
+      owner-sig-only, buildable trustlessly (matches our untraced decode branch).
+      Auto-compounding on Minswap is viable via executor-keyed positions.
+      See `reference/farm-docs/minswap-farm.md` + D19.
+- [ ] **D19 · Minswap integration verification:** (a) provision farm key-API access
+      with Minswap (they offered — reach out); (b) dust-test emergency withdraw
+      (constructor 3, owner-only-signed, self-built) on mainnet — the one claim still
+      resting on their word + our decode rather than an executed tx; (c) exercise one
+      full API cycle with dust (first-deposit → harvest → stake-more → withdraw-all)
+      and build the **CBOR verifier** (never blind-sign server-built txs — check
+      rewards→owner, restake amounts, no value leakage, expected signers).
 - [ ] **D13 · ΔLP visibility across the two-tx batcher flow:** the compound tx
       creates *order* UTXOs; the LP tokens arrive later, when Minswap's batcher
       fills the deposit order and pays the receiver. So how does the vault validator

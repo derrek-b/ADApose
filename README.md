@@ -23,6 +23,19 @@ Non-custodial auto-compounding yield vaults for Cardano LP positions.
 - **Mesh SDK** — CIP-30 wallet connect (web)
 - Dev loop: `aiken check` → Lucid emulator → Yaci DevKit → preprod → mainnet
 
+## Develop
+
+```bash
+cd validators && aiken check          # on-chain: typecheck + unit tests
+cd executor   && npm run setup        # off-chain: exact-lockfile install (= npm ci)
+```
+
+Use **`npm run setup`** (or `npm ci`) for the executor, **not `npm install`** — all
+deps are exact-pinned and `ci` refuses to drift the lockfile, which is the supply-chain
+guard for a service that holds a hot signing key (decisions.md D19). `npm install` is
+only for intentionally bumping a dependency, with the diff reviewed before it reaches
+the key-holding machine. Full command list in `CLAUDE.md`.
+
 ## The product in one paragraph
 
 Each user's position is a UTXO at the vault validator's script address, owner recorded

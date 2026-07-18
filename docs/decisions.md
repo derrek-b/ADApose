@@ -582,6 +582,33 @@ live 2026-07-18 by field-probing `k-app-monorepo-mainnet-prod.minswap.org/graphq
 | SDK / tooling | vendored @minswap/sdk | lower-level cab lib |
 | Test venue | NO preprod farm — mainnet dust only | preprod deployment exists |
 
+**D19 addendum · Universal signing gate + dependency pinning — 2026-07-18**
+The "never blind-sign server-built CBOR" rule generalizes: the API is not the only
+unaudited builder in the signing path — the @minswap/sdk, Lucid, and the whole npm/JSR
+dependency tree are too. Same vulnerability class (untrusted code shapes a tx our hot
+key signs); different dynamics (a live API can serve a targeted malicious response per
+request; static pinned code can only attack if the poison is already in the installed
+artifact, i.e. the risk concentrates at version-bump/supply-chain moments).
+- **One choke point, builder-agnostic:** NOTHING is signed unless an independent
+  verifier passes it, regardless of who built it (API / SDK / Lucid / our own code).
+  Verifier re-parses the RAW CBOR to be submitted (not the builder's in-memory objects)
+  — ideally via a distinct, minimal-dependency deserializer (e.g. CML) to avoid
+  monoculture failure — and checks against pre-stated INTENT (expected inputs, outputs
+  to expected addresses, order/position datum receiver = our vault/executor, value
+  conservation, sane fee, required_signers exactly {executor, Minswap keys}, no surprise
+  mint). Fail closed. This is D2's "constrain the executor path" done in TS against
+  foreign builders instead of in Aiken.
+- **Dependency pinning (applied 2026-07-18):** all executor direct deps pinned to exact
+  versions (dropped `latest`/`^`); transitive deps pinned by lockfile. Use `npm ci`
+  (not `npm install`) — exact lockfile install, refuses drift. Bumps get a reviewed diff
+  before reaching the key-holding machine. Vendored `reference/sdk` snapshot enables
+  diffing SDK releases.
+- **Blast radius unchanged:** even a fully compromised builder/dep CANNOT touch user
+  vault funds — spending a vault UTXO runs our on-chain validator, which no malicious
+  builder output satisfies. Entire supply-chain surface is confined to the executor-
+  custody (Tier-3) zone D18 already prices in (MPC key, capped capital). The verifier
+  narrows the largest remaining hole into that zone.
+
 **Status: D8 Phase-1 Minswap target RESTORED as viable** (executor-keyed variant,
 custody-disclosed per D18). Next: provision API access; dust-test emergency withdraw
 (constructor 3) to close the last unverified claim; decide Minswap-first vs

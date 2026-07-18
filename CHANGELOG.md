@@ -58,6 +58,18 @@ components share one repo lifecycle; split per-component if they diverge.
   viable** via executor-keyed positions (D19); D8's Minswap Phase-1 target restored.
   Minswap-vs-WingRiders is now a product choice, not a technical gate.
 
+### Executor security posture (2026-07-18)
+
+- Universal signing gate (D19 addendum): the "never blind-sign server-built CBOR" rule
+  generalized beyond the Minswap API to ALL unaudited builders in the signing path
+  (@minswap/sdk, Lucid, npm/JSR tree). Nothing is signed unless an independent verifier
+  re-parses the raw CBOR and checks it against pre-stated intent; fail closed. Blast
+  radius stays confined to the executor-custody (Tier-3) zone — user vault funds remain
+  protected on-chain regardless.
+- Dependency pinning: all executor direct deps pinned to exact versions (dropped
+  `latest`/`^`); `npm ci` (not `install`) is now the documented install for the
+  key-holding service.
+
 ### Validator design — executor-keyed variant
 
 - D18: systematic invariant redesign for the executor-keyed WingRiders variant. Vault

@@ -21,7 +21,7 @@ aiken build          # compile to plutus.json blueprint
 **Executor (`executor/`, Node ESM + TypeScript):**
 ```bash
 cd executor
-npm install               # requires .npmrc (JSR registry) — already committed
+npm ci                    # exact lockfile install (requires .npmrc, JSR registry — committed). Use `ci`, not `install`: all deps are exact-pinned (D19) and `ci` refuses to drift the lockfile — the supply-chain guard for a hot-key service. `npm install` only when intentionally bumping a dep (review the diff before it reaches the key-holding machine).
 npm run dev               # tsx src/service/main.ts
 npm test                  # vitest (watch); npx vitest run for single pass
 npx vitest run path/to/file.test.ts   # single test file

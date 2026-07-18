@@ -48,6 +48,22 @@ components share one repo lifecycle; split per-component if they diverge.
   voters, as were two similar proposals — concept validated by established teams, but
   never market-tested; committee should expect the "why did others fail" question.
 
+### Pooled vault pivot — D20 (2026-07-18)
+
+- **Per-user vaults abandoned (supersedes D1):** research showed the farm layer is
+  necessarily a pooled executor-keyed position (Minswap: one position per owner per
+  pool), the custody story is identical either way, and the per-user design had grown
+  to contain share math PLUS a state machine. New design: one pooled vault per pool,
+  fungible share tokens, datum-tracked exchange rate, order-based deposits/redemptions,
+  fee as treasury share mint at compound (kills the fee_owed ledger — D13/D14
+  superseded). D3 trigger restated pool-level. Phase 1 re-scoped: pooled NIGHT/ADA
+  vault on Minswap, pitch-day demo, build from 2026-08-17.
+- **Five non-negotiable invariants (D20-N)** documented in decisions.md, CLAUDE.md, and
+  the vault.ak header: N1 datum-truth accounting, N2 dead shares, N3 house-favored
+  rounding, N4 owner-cancellable orders only, N5 custody honesty. Each requires a named
+  validator check + matching test.
+- vault.ak rewritten as the pooled-design sketch with the N-invariants as its header.
+
 ### Minswap resolution (2026-07-18)
 
 - Minswap answered all four integration questions (doc vendored at

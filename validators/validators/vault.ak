@@ -1,79 +1,54 @@
-//// Pomona vault validator — skeleton, pre-build.
-//// One UTXO per user at this script address. Datum carries owner + position state.
-//// See ../../docs/decisions.md D1/D2 (invariants) and D10–D14 (topology, slippage,
-//// fees, settlement, version ladder) for the design this must enforce.
+//// Pomona pooled vault — skeleton, pre-build. SUPERSEDES the per-user sketch (D20).
+//// One pooled vault UTXO per pool; users hold fungible share tokens; farm layer is
+//// an executor-keyed aggregate Minswap position (D16/D19 — unchanged by D20).
+//// Design record: docs/decisions.md D20 (+ D10/D12/D19 which survive).
 ////
-//// NOTE: written before first `aiken check` — syntax/stdlib details to be
-//// validated in Week 1. This file is a design artifact, not shipped code.
+//// ┌─────────────────────────────────────────────────────────────────────────┐
+//// │ D20-N · NON-NEGOTIABLE INVARIANTS — do not implement around these.      │
+//// │ Each must exist as a named check below AND a test (`aiken check -m nX_`)│
+//// │                                                                         │
+//// │ N1 DATUM-TRUTH   exchange rate ONLY from datum totals, never balances   │
+//// │ N2 DEAD SHARES   fixed virtual share offset at init (inflation attack)  │
+//// │ N3 ROUNDING      shares round DOWN on mint, assets DOWN on redeem —     │
+//// │                  every remainder stays in the pool, no exceptions       │
+//// │ N4 ORDERS ONLY   users never spend the vault; deposit/redeem = order    │
+//// │                  UTxOs, batched by executor, owner-cancellable anytime  │
+//// │ N5 CUSTODY HONESTY (comms) — shares are a redemption claim against an   │
+//// │                  executor-keyed farm; never describe as more sovereign  │
+//// └─────────────────────────────────────────────────────────────────────────┘
 
-// Topology (D11): ONE validator per DEX; all of that DEX's pools share this
-// script address. The pool is bound per-vault via the datum, so adding a pool
-// is an off-chain config change, not a deployment. A new DEX = a new validator.
+// Vault datum sketch (one UTXO per pool):
+//   pool_id: ByteArray          -- immutable; Minswap V2 LP asset name (D11 carries over)
+//   total_shares: Int           -- N1: the only denominator that exists
+//   farmed_lp: Int              -- N1: LP units entered into the farm (datum-tracked,
+//                                  updated only on validator-checked transitions)
+//   share_asset: AssetName      -- the pool's share token name (mint policy paired)
 
-// Datum sketch (D2, slimmed per D12/D13):
-//   owner: VerificationKeyHash   -- immutable; only signer who can Withdraw
-//   pool_id: ByteArray           -- immutable; Minswap V2 pool binding = the LP
-//                                   asset name. Security invariant: pins Compound
-//                                   to the owner-chosen pool (slippage checks are
-//                                   meaningless against an attacker-chosen pool)
-//   last_compound: Int           -- mutable (POSIXTime)
-//   fee_owed: Int                -- mutable; treasury's accrued cut, denominated
-//                                   in LP tokens (D13). Accrues on Compound,
-//                                   settles in full on Withdraw (D14)
-//
-// Slippage is deliberately NOT here (D12): the on-chain floor is a validator
-// parameter (uniform anti-theft bound, checked against pool spot price via
-// reference input); the adaptive per-order tolerance lives in executor code.
-// Field names cost nothing on-chain (positional CBOR; names erased in UPLC) —
-// name for the auditor. But trace strings DO embed — strip traces for mainnet.
+// Order datum sketch (separate order validator, N4):
+//   owner: VerificationKeyHash  -- only signer who can Cancel
+//   action: Deposit(assets) | Redeem(shares)
+//   min_out: Int                -- user's slippage/limit protection
+//   deadline: POSIXTime
 
-// Redeemer sketch (v1 — full withdraw only; v2 adds Collect + maybe partial, D14):
-//   Deposit    -- owner-signed top-up of their own vault
-//   Withdraw   -- owner-signed, FULL only: vault UTXO consumed, no continuing
-//                 output; fee_owed LP → treasury (waived if < dust_threshold);
-//                 everything else → owner
-//   Compound   -- executor-signed; accrue-only (no settlement branch):
-//                 fee_owed += fee_bps × ΔLP, position only grows
-//   Rescue     -- treasury-signed; ONLY for stray UTxOs (D10): datum missing or
-//                 not a VaultDatum. A valid datum must never reach this branch.
+// Vault redeemer sketch:
+//   ApplyOrders   -- executor-signed batch: apply deposit/redeem orders against the
+//                    vault. Checks: share mint == Σ deposits at datum exchange rate
+//                    (N3: round shares DOWN); redemption payouts at datum rate
+//                    (N3: round assets DOWN); totals updated exactly (N1);
+//                    every order satisfied or untouched (no cherry-pick griefing)
+//   EnterFarm     -- executor-signed: vault LP → Minswap farm via D19 API tx;
+//                    farmed_lp += exact LP leaving (N1); value may ONLY move to the
+//                    farm path (order/position outputs verified, D12 floor on swaps)
+//   RecordHarvest -- executor-signed, post-compound: farmed_lp += harvested ΔLP;
+//                    treasury share mint == fee_bps × ΔLP-equivalent shares (D20 fee;
+//                    LP-units discipline — fee on emissions, never in-pool growth)
+//   Rescue        -- treasury-signed; ONLY missing/unparseable datums (D10, unchanged)
 
-// Plutus V3: spend datum arrives as Option<Data> — receipt of outputs can't be
-// rejected (no receive/fallback equivalent), so unparseable/datum-less UTxOs are
-// recovered via Rescue instead of being stuck forever (D10).
+// Share mint policy sketch:
+//   mint/burn allowed ONLY when the pooled vault UTXO for this pool is spent in the
+//   same tx with ApplyOrders/RecordHarvest (delegation by presence); amounts checked
+//   by the vault validator. N2: init path mints DEAD_SHARES to an unspendable output.
 
-// Parameters bake into the script hash: changing ANY of them = new address =
-// user migration (D11). Keep them stable; pools deliberately excluded.
-// validator vault(
-//   executor: VerificationKeyHash,
-//   treasury: Address,
-//   fee_bps: Int,              -- 450 = 4.5% of ΔLP per compound (D13)
-//   slippage_floor_bps: Int,   -- loose anti-theft bound, NOT execution tuning (D12)
-//   dust_threshold: Int,       -- LP amount below which Withdraw settlement is waived (D14)
-// ) {
-//   spend(raw_datum: Option<Data>, redeemer: VaultAction, oref, tx) {
-//     when soft_cast_vault_datum(raw_datum) is {
-//       Some(datum) -> when redeemer is {
-//         Withdraw -> and {
-//           owner_signed(tx, datum.owner),
-//           no_continuing_output(tx),                    -- v1: full withdraw only (D14)
-//           fee_settled_or_waived(tx, datum.fee_owed, treasury, dust_threshold),
-//         }
-//         Compound -> and {
-//           executor_signed(tx, executor),
-//           continues_at_same_script(tx),
-//           position_only_grows(tx, datum.pool_id),      -- ΔLP ≥ 0, principal untouchable
-//           fee_accrual_exact(tx, datum, fee_bps),       -- fee_owed += fee_bps × ΔLP, no settle branch (D13/D14)
-//           datum_immutables_preserved(tx, datum),       -- owner + pool_id frozen
-//           orders_target_pool(tx, datum.pool_id),       -- pool binding (D11)
-//           swap_above_floor(tx, slippage_floor_bps),    -- vs spot from pool reference input (D12)
-//         }
-//         Deposit -> owner_signed(tx, datum.owner) && continues_at_same_script(tx)
-//         Rescue -> False  -- valid vaults are NEVER rescuable
-//       }
-//       None -> when redeemer is {
-//         Rescue -> treasury_signed(tx, treasury)  -- stray UTxO: no/bad datum
-//         _ -> False
-//       }
-//     }
-//   }
-// }
+// Off-chain (executor) invariants that pair with this file — D19:
+//   never blind-sign: every tx (API-built or SDK/Lucid-built) re-parsed from raw CBOR
+//   by the independent verifier against pre-stated intent before the hot key signs.

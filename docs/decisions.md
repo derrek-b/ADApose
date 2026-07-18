@@ -4,7 +4,7 @@ Running log — date each entry. Sources in `../reference/` where vendored.
 
 ---
 
-## D1 · Per-user vault UTXOs (not shared/share-token vault) — 2026-07
+## D1 · ~~Per-user vault UTXOs~~ — SUPERSEDED by D20 (2026-07-18) — 2026-07
 
 Each user = one UTXO at the vault script address, owner pubkey in datum.
 
@@ -271,7 +271,7 @@ pool binding lives in its datum (`pool_id` = Minswap V2 LP asset name).
   meaningful preference. Withdraw needs no bound — owner signs their own tx.
 - Week 1 verify: parse a live preprod Minswap V2 pool datum for the spot-price read.
 
-## D13 · Fee accrual — fee_owed in datum, denominated in LP tokens — 2026-07-16
+## D13 · ~~Fee accrual — fee_owed in datum~~ — SUPERSEDED by D20 fee-as-share-mint (2026-07-18) — 2026-07-16
 
 `fee_owed: Int` (LP token units) accrues the treasury's 4.5% cut per-vault instead of
 settling every compound round.
@@ -293,7 +293,7 @@ settling every compound round.
   UPLC erases identifiers) — name for the auditor. Trace strings DO embed in the
   script; compile mainnet build with traces stripped.
 
-## D14 · Settlement on withdraw only + version ladder — 2026-07-16
+## D14 · ~~Settlement on withdraw only + version ladder~~ — SUPERSEDED by D20 (2026-07-18) — 2026-07-16
 
 Fees settle ONLY at withdraw; v1 allows FULL withdraw only. (Supersedes D2's withdraw
 wording "or remainder returns with datum integrity" — that parenthetical was partial
@@ -482,7 +482,7 @@ published.** Double-edged for the pitch: (1) established DEX teams saw the same 
 by voters and nobody funded it privately — committee will ask "why did others fail /
 is the market too small?" (Cardano DEX LP TVL ~$40–65M, D9). Have that answer ready.
 
-## D18 · Invariant redesign for the executor-keyed variant (WingRiders) — 2026-07-17
+## D18 · Invariant redesign, executor-keyed variant — PARTIALLY SUPERSEDED by D20 (state machine dropped; Tier framework, mitigations & verifier survive) — 2026-07-17
 
 Systematic pass of D2/D10–D14 against the executor-keyed farm design (D16). Root cause
 of every change: value physically LEAVES the vault into executor-owned farm positions
@@ -613,3 +613,76 @@ artifact, i.e. the risk concentrates at version-bump/supply-chain moments).
 custody-disclosed per D18). Next: provision API access; dust-test emergency withdraw
 (constructor 3) to close the last unverified claim; decide Minswap-first vs
 WingRiders-first vs both — a product decision, no longer a technical gate.
+
+## D20 · SUPERSEDES D1 — pooled single-vault design (share-based) — 2026-07-18
+
+**Decision:** abandon per-user vault UTXOs. One pooled vault per pool at our script
+address; users hold fungible share tokens; all accounting is share-based. Farm layer
+unchanged (executor-keyed aggregate position, D16/D19).
+
+**Why D1's pillars collapsed under the research:**
+1. ~~"Smallest audit surface"~~ — INVERTED. The executor-keyed farm forced D18's claim
+   state machine + Enter/Reconcile/Settle + reference-input reconciliation + per-user
+   fee ledgers, PLUS pro-rata share math anyway (batched compounds split gains). The
+   per-user design grew to contain the thing it was built to avoid, plus a state
+   machine the pooled design doesn't need.
+2. ~~"Strongest non-custodial story"~~ — already broken by the farm layer regardless of
+   vault topology (D18): ~100% of assets are farmed ~100% of the time, under executor
+   keys. Both designs end at the identical custody disclosure.
+3. ~~"Withdrawal needs only owner sig"~~ — dead for farmed value in both designs.
+4. "No shared-state contention" — still true, and is the one real cost of pooling;
+   paid via N4 (order-based actions) below.
+**The forcing fact:** Minswap allows ONE farm position per owner per pool (D19 —
+`buildFirstDepositV2` fails if a position exists), so assets are commingled at the farm
+layer no matter what the vault layer pretends. Per-user vaults on Minswap = per-user
+claim receipts against a pooled position = shares in an expensive costume.
+
+**Design:**
+- One vault UTXO per pool (v1: NIGHT/ADA), `pool_id` in datum (D11 logic carries over).
+- **Share token** (transferable native asset, one asset name per pool) minted on
+  deposit, burned on redemption. Non-transferable variant REJECTED — it reintroduces
+  per-user receipt UTXOs, i.e. D1 through the back door.
+- Datum tracks: `total_shares`, `total_lp_principal` (LP units entered into farm),
+  plus pool binding. Exchange rate = farmed LP total / total_shares.
+- **Fee redesign (supersedes D13/D14 wholesale):** at each compound, mint treasury
+  shares worth fee_bps (4.5%) of the harvested gain. No fee_owed ledger, no settlement
+  rules, no dust waiver — the minUTxO dust problem that created the accrual design
+  doesn't exist (treasury exits like any user). LP-units discipline retained: fee is
+  computed on LP-count growth (emissions), never on in-pool appreciation.
+- **Trigger (D3 restated):** pool-level — compound when aggregate accrued rewards ≥
+  2× cycle cost (~5–7 ADA: API harvest tx + swap order + add-liq order + stake tx +
+  batcher fees). Aggregation crosses threshold faster than any per-vault trigger.
+- Deposits/withdrawals are ORDER UTxOs batched by the executor against the vault (N4).
+- Survives untouched: D10 Rescue · D12 entry/exit slippage floor (our own orders) ·
+  D19 API integration + universal signing verifier + dependency pinning · D16
+  emergency-withdraw guarantee · D18's Tier framework, MPC-key + capped-capital +
+  proof-of-reserves mitigations (custody model is UNCHANGED by this decision).
+- D8 re-scope: Phase 1 = pooled NIGHT/ADA vault on Minswap, pitch-day demo; build
+  window starts 2026-08-17 (4 prep weeks available before it).
+
+### D20-N · NON-NEGOTIABLE INVARIANTS (the price of pooling — never trade these away)
+
+The shared-vault attack class (ERC-4626 family) was the reason D1 existed. We accept
+the class ONLY under these standing conditions. Each MUST exist as a named check in
+the validator and a test matching its ID (`aiken check -m n1_` etc.). Any PR/commit
+touching share math, mint/burn, or redemption MUST state which N-invariants it
+preserves. These are restated in CLAUDE.md and as the header of vault.ak so they are
+loaded into every working session.
+
+- **N1 — Datum-truth accounting.** Exchange rate derives ONLY from datum-tracked
+  totals (`total_shares`, farmed-LP total). NEVER from reading UTXO balances. Kills
+  donation-rate manipulation; makes D10 stray UTxOs accounting-irrelevant.
+- **N2 — Dead shares at init.** First deposit mints a fixed virtual/dead share offset
+  (burned to an unspendable key or held by the script forever). Kills the
+  first-depositor inflation attack.
+- **N3 — House-favored rounding, one direction, everywhere.** Shares round DOWN on
+  mint; assets round DOWN on redemption; the pool keeps every remainder. No path may
+  round in the redeemer's favor. Rounding asymmetry is where 4626 exploits live.
+- **N4 — Order-based user actions, owner-cancellable.** Users never spend the vault
+  UTXO directly (contention + griefing). Deposits/redemptions are order UTxOs; the
+  executor batches them; every order is cancellable by its owner's signature alone at
+  any time (sovereignty over pending actions).
+- **N5 — Custody honesty.** The share token is a redemption claim enforced at burn by
+  the validator, dependent on executor liveness, against an executor-keyed farm
+  position. No pitch, doc, or UI may describe the pooled vault as more sovereign than
+  that. (Comms invariant — reviewed at every user-facing artifact.)

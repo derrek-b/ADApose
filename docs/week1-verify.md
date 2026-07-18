@@ -6,6 +6,16 @@ result contradicts the assumption, write the superseding D-entry.
 
 ## Architecture-deciding (do first — outcomes change the design)
 
+- [ ] **D20-N · Non-negotiable invariant test suite** (pooled design's standing price —
+      each must be a named validator check + matching test before any mainnet dust):
+      `n1_` datum-truth (exchange rate immune to donated/stray UTxOs), `n2_` dead-shares
+      (first-depositor inflation attack fails in emulator), `n3_` rounding property
+      tests (mint rounds shares down / redeem rounds assets down, remainder stays —
+      fuzz across amounts incl. 1-lovelace edges), `n4_` order cancel always succeeds
+      owner-signed + ApplyOrders cannot cherry-pick/skip/reorder to a user's detriment.
+- [ ] **D20 · Share-token UX check:** confirm a plain wallet (Eternl/Lace) displays the
+      share token sanely for the demo (token registry entry needed?).
+
 - [x] ~~**D16 · WingRiders custody model (the go/no-go):**~~ **RESOLVED 2026-07-17**
       (Blockfrost mainnet): farm positions record PUBKEY owners; owner-reclaim tx
       `49bc84d7…` signed by exactly the datum owner pkh (`f873a0f88d…`), no authority
@@ -16,16 +26,9 @@ result contradicts the assumption, write the superseding D-entry.
 - [x] ~~**D16 · WingRiders current farm model:**~~ **CONFIRMED live** — Shares Lock
       (`0237cc31…` / `addr1wypr0np3…`) actively processed at block 13.67M (agent adding
       WRT to 8–30 positions per batch, continuously). It is the current mechanism.
-- [ ] **D16 · Executor-keyed flow mechanics** (from the compounder design pass,
-      2026-07-17): (a) can a WR AddLiquidity request deliver LP *directly into* a
-      Shares Lock position via `compensationDatum` (beneficiary = SL address), and does
-      WingRiders' reward agent pick up externally-created positions? Dust test.
-      (b) does the SL owner check ignore the owner address's STAKE credential, leaving
-      it usable as an on-chain vault↔position tag? **PROMOTED to load-bearing by D18:
-      the Reconcile-via-reference-input mechanism (on-chain principal integrity) depends
-      on it — if tagging fails, principal_lp degrades to executor-attested. Run this
-      dust test FIRST.** (c) confirm reward pushes continue
-      to positions whose payment cred is a previously-unseen pubkey (no allowlist).
+- [ ] **D16 · WingRiders-only mechanics (DEPRIORITIZED by D20 — Phase 1 is Minswap):**
+      stake-cred tagging / direct-to-lock / unknown-pubkey reward pushes only matter
+      if/when WingRiders becomes venue #2. Park until then.
 - [ ] **D17 · LP-router fallback data layer:** if pivoting to the cross-DEX LP router,
       need a reliable cross-DEX APR/TVL feed to drive placement + profitability-gated
       migration. Scope the indexer/oracle. (Minswap + WingRiders AMM order paths already
@@ -50,16 +53,14 @@ result contradicts the assumption, write the superseding D-entry.
       full API cycle with dust (first-deposit → harvest → stake-more → withdraw-all)
       and build the **CBOR verifier** (never blind-sign server-built txs — check
       rewards→owner, restake amounts, no value leakage, expected signers).
-- [ ] **D13 · ΔLP visibility across the two-tx batcher flow:** the compound tx
-      creates *order* UTXOs; the LP tokens arrive later, when Minswap's batcher
-      fills the deposit order and pays the receiver. So how does the vault validator
-      enforce `fee_owed += fee_bps × ΔLP` if ΔLP isn't known at compound-tx time?
-      Verify how a filled order pays out: Minswap orders support a receiver +
-      receiver-datum (spec §order) — confirm the fill can recreate the vault UTXO
-      at the script address with the updated datum, and decide where the accrual
-      check actually runs (at order creation with min-receive as the ΔLP lower
-      bound, at fill time, or split). **This is the least-validated link in the
-      whole invariant chain — the current vault.ak sketch hand-waves it.**
+- [ ] **~~D13 ΔLP visibility~~ → D20 · RecordHarvest enforcement:** the harvest cycle
+      never touches the vault, so what stops RecordHarvest from lying about ΔLP?
+      Proposed: include the executor's farm POSITION UTXO as a reference input —
+      its on-chain LP amount is the authoritative total; validator sets
+      `farmed_lp := referenced position LP` and treasury mint = fee_bps × increase.
+      (N1-compatible: the farm position can't receive donations — adds are
+      executor+Minswap-gated.) Verify the position UTXO is referenceable and its
+      value parseable in one vault spend.
 
 ## Invariant plumbing (needed before the validator is real)
 
@@ -72,12 +73,18 @@ result contradicts the assumption, write the superseding D-entry.
 
 ## Cost model (D4 — estimates → measurements)
 
-- [ ] **Marginal cost per vault per cycle:** currently 0.1–0.3 ADA derived; measure
-      actual bytes + exunits on preprod with a real batch tx. Deterministic.
-- [ ] **Vaults per batch tx:** currently ~20–30 from the 16KB / 14M mem / 10B steps
-      envelope; confirm with a real multi-vault spend.
+(Recast for D20: compound cost is now per-POOL per cycle — vault touches happen only
+at ApplyOrders/RecordHarvest — and per-user cost is per-ORDER in a batch.)
+
+- [ ] **Cycle cost per pool:** D20 assumes ~5–7 ADA (API harvest tx + swap order +
+      add-liq order + stake tx + batcher fees + RecordHarvest). Measure for real with
+      dust once API access lands.
+- [ ] **Orders per ApplyOrders batch:** how many deposit/redeem orders fit in one
+      vault spend under 16KB / 14M mem / 10B steps? (Replaces the old ~20–30
+      vaults-per-tx estimate.)
 - [ ] **Farm harvest net cost:** ~0.5 ADA net per harvest (2 attached, ~1.5 back) —
-      verified from docs (D4), confirm on preprod during the D6 spike.
+      verified from docs (D4); confirm during the D19 dust cycle (mainnet — no preprod
+      farm exists).
 
 ## Toolchain
 

@@ -51,3 +51,12 @@ sessions. Full step-by-step TBD.
 - **One tx or several?** Five duties + reference-script publishing may exceed tx
   limits; if split, define the safe intermediate states.
 - **Share asset name:** exact bytes — `(333)` label + what pool identifier?
+- **Key encoding & rotation (added 2026-07-19):** four vault redeemers are
+  executor-signed and two paths treasury-signed — where do those key hashes live?
+  (a) **Validator parameters** — baked into the script hash; simplest, but rotation
+  = new address = full migration, and there is deliberately no migrate redeemer
+  (upgrade path = users redeem + re-deposit). (b) **Datum fields** — rotatable via
+  a treasury-signed rotate path; adds surface + a new redeemer. The executor key is
+  hot and D18's threat model centers on its compromise, so "what happens after a
+  key compromise" needs a real answer — and the choice shapes the init datum AND
+  the hash-ordering item above (parameters feed the script hash).

@@ -23,11 +23,12 @@ Per the scope-claims-to-evidence rule, every API/contract claim carries a tag:
 
 | Doc | Path | Status |
 |---|---|---|
+| [value-flow.md](value-flow.md) | Study guide: UTXO & value movement per workflow, tx by tx | drafted |
 | [deposit.md](deposit.md) | User deposit: order UTXO → ApplyOrders batch → share mint | drafted |
-| redeem.md | User redemption: order UTXO → ApplyOrders → share burn + LP payout | planned |
+| [redeem.md](redeem.md) | User redemption: order UTXO → ApplyOrders → share burn + LP payout | drafted |
 | [vault-init.md](vault-init.md) | Bootstrap: vault UTXO + thread NFT (N6) + dead shares (N2) + CIP-68 ref NFT + reference scripts | stub — duty list |
 | enter-farm.md | Vault LP → executor-keyed Minswap farm position (D19 API) | planned |
 | compound-cycle.md | Multi-tx: API harvest → MIN→pair swap → add-liquidity → stake → RecordHarvest | planned |
-| emergency-withdraw.md | Trustless farm exit (constructor 3, owner-only) + unwind to vault | planned |
+| [emergency-withdraw.md](emergency-withdraw.md) | Trustless farm exit (constructor 3, owner-only) + unwind to vault | stub — trigger/scope notes |
 | rescue.md | Treasury-signed stray-UTXO recovery (D10) | planned |
 | proof-of-reserves.md | Public monitor: datum totals vs farm position (N5/D18 mitigation) | planned |

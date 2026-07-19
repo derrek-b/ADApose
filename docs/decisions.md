@@ -720,6 +720,41 @@ polish. Decided now because the label is part of the asset name and frozen at fi
 mint — retrofit = new token + migration. Details land in `docs/workflows/vault-init.md`
 when written; preprod wallet-rendering check on week1-verify.
 
+### D20 addendum · `ExitFarm` joins the redeemer set (custody one-way-valve fix) — 2026-07-19
+
+Surfaced writing `docs/workflows/redeem.md`: the D20 redeemer set (ApplyOrders ·
+EnterFarm · RecordHarvest · Rescue) had no transition moving LP from farm custody back
+into the vault — EnterFarm was a one-way valve. Farm-withdrawn LP (buffer-miss
+redemptions; the emergency-withdraw unwind) would strand at the executor's address
+with `farmed_lp` still claiming it as farmed: redemptions beyond the unfarmed buffer
+become unservable (n4 payouts need vault-held LP), and proof-of-reserves (D18) reads
+a phantom shortfall. Fix: **`ExitFarm`** — executor-signed mirror of EnterFarm: vault
+value += LP entering, `farmed_lp` −= exactly that amount, `total_lp` / `total_shares`
+/ exchange rate unchanged (a custody move, never a rate event — N1). Rides with a
+named check **`solvency`**: `0 <= farmed_lp <= total_lp` must survive every vault
+transition. The transitions table (total_lp addendum above) extends: ExitFarm moves
+`farmed_lp` only, downward. Also the on-chain leg of the emergency-withdraw unwind
+(D19) — `emergency-withdraw.md` will depend on it when written.
+
+### D20 addendum · Uniform pre-batch rate for ApplyOrders batches — 2026-07-19
+
+Every order in an ApplyOrders batch — deposits and redeems, mixed batches allowed —
+prices at the SAME exchange rate: the input vault datum's `(total_shares, total_lp)`.
+Per-order entitlements floor per N3; the continuing datum updates as net sums. Safe
+because (a) both directions are rate-neutral — a proportional mint/burn leaves
+LP-per-share unchanged — so batch composition cannot move the rate, and (b) the
+double-floor round trip `floor(floor(lp·S/L)·L/S) ≤ lp` guarantees a same-batch
+deposit+redeem always loses dust to the pool, never extracts. Rejected alternatives:
+sequential per-order rate updates, and two-phase deposits-then-redeems —
+rate-neutrality makes both equal to uniform modulo dust, while adding
+order-dependence (an N4 fairness surface: executor-chosen ordering would affect
+per-user outcomes), quote-breaking (`min_shares`/`min_out` would depend on
+unknowable batch position), and a costlier validator fold (mutating totals threaded
+per order vs. two constants + one net-sum check). Bonus of uniform mixed batches:
+in-tx value netting — incoming deposit LP funds outgoing redeem payouts; the vault
+covers only the net difference, shrinking buffer pressure under two-sided traffic.
+Surfaced in deposit.md (Open point 3, now struck); full argument in redeem.md Step D.
+
 ## D21 · Deposit path — any mix of pool assets + LP, one signature, via chained Minswap order — 2026-07-18
 
 **Decision:** a Phase-1 deposit accepts any combination of {pool asset A, pool asset B,

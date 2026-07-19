@@ -369,9 +369,12 @@ indexer marks orders applied.
    Rescue as a third spending path, treasury-signed, reachable only on datum cast
    failure (exact D10 model, unconstrained spend). Inline-datums-only emission policy;
    by-hash-with-lost-preimage is unspendable by protocol, no rescue possible.
-3. **Uniform pre-batch rate** for all orders in a batch (proposed above) — simplest
-   on-chain check; confirm no adverse interaction in mixed deposit+redeem batches
-   when redeem.md is written.
+3. ~~**Uniform pre-batch rate** for all orders in a batch.~~ **RESOLVED
+   2026-07-19** — D20 addendum: adopted for both directions incl. mixed batches.
+   Safe by rate-neutrality + the double-floor round trip (`floor(floor(lp·S/L)·L/S)
+   ≤ lp` — a same-batch in-and-out always loses dust, never extracts); sequential
+   alternatives rejected (order-dependence = N4 surface, quote-breaking, costlier
+   fold). Full argument in redeem.md Step D.
 4. ~~**`owner_addr` as full address.**~~ **RESOLVED 2026-07-18** — D21 addendum:
    split into `canceller: AuthMethod` (Signature | SpendScript — Minswap's proven
    pattern; an address can't sign, and signature-only Cancel bricks script wallets)

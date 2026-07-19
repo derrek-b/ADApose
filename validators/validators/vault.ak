@@ -62,10 +62,13 @@
 
 // Vault redeemer sketch:
 //   ApplyOrders   -- executor-signed batch: apply deposit/redeem orders against the
-//                    vault. Checks: share mint == Σ deposits at datum exchange rate
-//                    total_lp/total_shares (N3: round shares DOWN); redemption payouts
-//                    at datum rate (N3: round assets DOWN); total_lp & total_shares
-//                    updated exactly (N1); every order satisfied or untouched
+//                    vault (mixed batches allowed). Every order prices at the UNIFORM
+//                    pre-batch rate = input datum total_lp/total_shares; continuing
+//                    datum updates as net sums (D20 addendum 2026-07-19 — safe by
+//                    rate-neutrality + double-floor round trip). Checks: share mint
+//                    == Σ deposits at that rate (N3: round shares DOWN); redemption
+//                    payouts at that rate (N3: round assets DOWN); total_lp &
+//                    total_shares updated exactly (N1); every order satisfied or untouched
 //                    (no cherry-pick griefing); every spent order's pool_nft == MY
 //                    thread NFT (cross-pool orders can't leak into this batch);
 //                    lp_i = pool-LP amount in the order's VALUE (never datum-claimed);
@@ -75,10 +78,23 @@
 //                    farmed_lp += exact LP leaving, total_lp unchanged (N1); value may
 //                    ONLY move to the farm path (order/position outputs verified,
 //                    D12 floor on swaps)
+//   ExitFarm      -- executor-signed mirror of EnterFarm (D20 addendum 2026-07-19 —
+//                    surfaced by redeem.md: without it farm-withdrawn LP had no path
+//                    back into the vault; buffer-miss redemptions unservable): vault
+//                    value += LP entering; farmed_lp -= exactly that amount;
+//                    total_lp/total_shares/rate unchanged (custody move, never a
+//                    rate event — N1). Named check `solvency`: 0 <= farmed_lp <=
+//                    total_lp survives every transition. Also the on-chain leg of
+//                    the emergency-withdraw unwind (D19).
 //   RecordHarvest -- executor-signed, post-compound: total_lp and farmed_lp += ΔLP;
 //                    treasury share mint == fee_bps × ΔLP-equivalent shares (D20 fee;
 //                    LP-units discipline — fee on emissions, never in-pool growth)
 //   Rescue        -- treasury-signed; ONLY missing/unparseable datums (D10, unchanged)
+//
+// Deliberately ABSENT (confirmed 2026-07-19 — absence is chosen, not missed):
+//   no wind-down/retire path (vault UTXO + thread NFT persist forever at ~minUTxO
+//   cost); no migrate/upgrade redeemer (a treasury-signed migrate is a backdoor by
+//   definition — upgrades = users redeem and re-deposit into the new vault).
 
 // Share mint policy sketch:
 //   mint/burn allowed ONLY when the vault UTXO carrying this pool's THREAD NFT (N6 —

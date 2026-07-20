@@ -307,9 +307,11 @@ vault (no token-dust bloat of the long-lived vault UTXO — minUTxO scales with 
 size), never reach executor change (leak closed). The honest path never exercises
 this: web-built orders and Minswap fills are `{ADA, LP}` by construction.
 
-Batch pricing (proposed): **all orders in one batch price at the uniform pre-batch
-rate** `(total_shares, total_lp)` — order-independent, no intra-batch sequencing to
-verify on-chain, and house-favored rounding applies per order. → **Open point 3.**
+Batch pricing (ADOPTED — D20 addendum 2026-07-19): **all orders in one batch price
+at the uniform pre-batch rate** `(total_shares, total_lp)` — order-independent, no
+intra-batch sequencing to verify on-chain, and house-favored rounding applies per
+order. Safe in mixed deposit+redeem batches too (double-floor round-trip argument,
+redeem.md Step D).
 
 Vault validator checks, by invariant name (each becomes a named check + `aiken check
 -m nX_` test):

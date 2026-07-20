@@ -736,6 +736,16 @@ transition. The transitions table (total_lp addendum above) extends: ExitFarm mo
 `farmed_lp` only, downward. Also the on-chain leg of the emergency-withdraw unwind
 (D19) — `emergency-withdraw.md` will depend on it when written.
 
+### D20 addendum · Deliberately absent redeemer paths — 2026-07-19
+
+Confirmed while closing the redeemer set: **no wind-down/retire path** (the vault
+UTXO + thread NFT persist forever at ~one minUTxO per pool — a close path would need
+a kill authority nobody should hold) and **no migrate/upgrade redeemer** (a
+treasury-signed migrate is a backdoor by definition — whoever holds it can redirect
+the vault; upgrades = users redeem and re-deposit into the new vault). Absence is
+chosen, not missed — also noted in the vault.ak sketch so future sessions don't
+"fix" it.
+
 ### D20 addendum · Uniform pre-batch rate for ApplyOrders batches — 2026-07-19
 
 Every order in an ApplyOrders batch — deposits and redeems, mixed batches allowed —

@@ -101,3 +101,34 @@ components share one repo lifecycle; split per-component if they diverge.
 ### Docs & tooling
 
 - CLAUDE.md created; /commit and /update-brain skills ported from fum_project
+
+### Deposit & redeem workflows designed — D21/D22 + redeem path (2026-07-18/19)
+
+- **N6 thread-NFT authenticity** joins D20-N (six invariants now): a one-of-one state
+  NFT minted at init identifies THE vault UTXO; validator and share-mint policy key on
+  the NFT, never the address — kills counterfeit-vault share minting. Test `n6_`.
+- **D21 deposit path:** any mix of {pool asset A, pool asset B, LP} in one signature —
+  asset leg rides a Minswap DEPOSIT order whose `successReceiver` is our order
+  validator (delivery + exact inline datum on-chain-enforced, verified from Minswap
+  source: `reference/minswap-amm/order_validation.ak`). Addenda: canceller/payout
+  split, ONE order validator for all pools (`pool_nft` in datum), order-validator
+  Rescue, harvest-priority sequencing, value-derived amounts + pass-through payout.
+- **D22 off-chain structure:** DEX-specific tx construction behind adapter interfaces
+  with the CBOR verifier OUTSIDE the adapter boundary; `shared/` workspace package for
+  datum codecs / floor-rounding rate math / config; CIP-57 blueprint (`plutus.json`)
+  as the validators↔TS bridge — addresses and schemas derived, never hand-copied.
+- **Validator: `ExitFarm` redeemer added** (D20 addendum 2026-07-19) — EnterFarm's
+  mirror; closes the farm-custody one-way valve that made buffer-miss redemptions
+  unservable. Named check `solvency` (`0 <= farmed_lp <= total_lp`). Deliberate
+  absences recorded: no wind-down path, no migrate redeemer.
+- **Uniform pre-batch rate adopted** (D20 addendum 2026-07-19): every order in an
+  ApplyOrders batch — mixed deposit+redeem included — prices at the input datum's
+  totals; net-sum updates. Safe by rate-neutrality + the double-floor round trip.
+- **Redeem path designed** (redeem.md): shares redeem recorded yield only (pending
+  emissions forfeited to the pool — N1); v1 pays LP out with optional user-signed
+  convert; unfarmed `BUFFER_PCT` buffer + three-tier Minswap-dependency honesty
+  (buffer-covered / co-sign API / emergency-withdraw escalation policy).
+- **Docs:** workflow suite grew — redeem.md, value-flow.md (UTXO/value trace study
+  guide), emergency-withdraw.md + vault-init.md stubs; docs/v2-ideas.md parking lot
+  created (chained exit, zap deposits, WingRiders venue #2, CIP-26, permissionless
+  init).

@@ -614,6 +614,19 @@ custody-disclosed per D18). Next: provision API access; dust-test emergency with
 (constructor 3) to close the last unverified claim; decide Minswap-first vs
 WingRiders-first vs both — a product decision, no longer a technical gate.
 
+### D19 addendum · Why the trustless exit can exist (reward-reserve custody) — 2026-07-23
+
+Surfaced writing `emergency-withdraw.md`: **pending farm emissions are never in
+the position UTXO** — they accrue as accounting against Minswap-controlled reward
+reserves and only become the owner's at harvest, which spends THEIR funds (hence
+the harvest co-sign). `EMERGENCY_WITHDRAW` (constructor 3) can be owner-only
+precisely because it touches only the owner's staked value; an exit that paid out
+pending rewards couldn't be trustless. Corollaries: forfeiture on emergency exit
+is structural, not punitive; no vault ledger entry is needed (emissions never
+landed — N1); and the co-sign requirement on normal spends is Minswap protecting
+their reserves, not gating our principal. ⚠️ their statement + design inference
+(`reference/farm-docs/minswap-farm.md` §2); dust-cycle item (b) observes it.
+
 ## D20 · SUPERSEDES D1 — pooled single-vault design (share-based) — 2026-07-18
 
 **Decision:** abandon per-user vault UTXOs. One pooled vault per pool at our script

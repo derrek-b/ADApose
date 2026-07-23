@@ -88,7 +88,10 @@
 //                    the emergency-withdraw unwind (D19).
 //   RecordHarvest -- executor-signed, post-compound: total_lp and farmed_lp += ΔLP;
 //                    treasury share mint == fee_bps × ΔLP-equivalent shares (D20 fee;
-//                    LP-units discipline — fee on emissions, never in-pool growth)
+//                    LP-units discipline — fee on emissions, never in-pool growth);
+//                    fee-mint bound (named check): t <= floor(ΔLP × total_shares /
+//                    total_lp) — the rate-non-decrease line; PoR check C5 is the
+//                    live alarm behind it (compound-cycle.md note 1)
 //   Rescue        -- treasury-signed; ONLY missing/unparseable datums (D10, unchanged)
 //
 // Deliberately ABSENT (confirmed 2026-07-19 — absence is chosen, not missed):

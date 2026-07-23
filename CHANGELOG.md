@@ -159,3 +159,44 @@ components share one repo lifecycle; split per-component if they diverge.
   mainnet dust-cycle question list (a–g) — API cycle incl. partial withdraw and
   position-destroy/recreate, verifier exercise, pending-rewards readability,
   two-hop confirmation, position-as-reference-input, cost measurements.
+
+### Rescue workflow designed (2026-07-23)
+
+- rescue.md consolidates D10 + the order-validator addendum into one contract:
+  cast-failure as the non-widenable security boundary (anything that casts is
+  never treasury-reachable), the four stray classes (hash-datum strays are
+  unspendable at the protocol level, not ours to fix; castable garbage incl.
+  counterfeit vaults = permanently stuck, accepted), detection via the same
+  `shared/` codec cast the validator performs, and rescue txs living entirely
+  outside the vault-spend precedence queue (the vault can't be an input — it
+  casts).
+- **New policy — return on claim:** rescued value held at treasury; best-effort
+  manual return on a two-part proof (funding tx identifies the key; fresh CIP-8
+  `signData` challenge proves present control). Exchange-withdrawal and
+  script-sender holes documented. **Flat handling fee + network costs**,
+  deducted, published in advance; verified claims process independent of the
+  sweep cadence. Discretionary, never promised (N5).
+- Treasury identity clarified: the cold high-privilege key (fee shares, Rescue,
+  emergency authorization, CIP-68 ref NFT) — never the executor hot key; its
+  form (single/multisig/threshold) added to vault-init's key-encoding cluster.
+
+### Emergency withdraw designed (2026-07-23)
+
+- emergency-withdraw.md graduated stub → full workflow. **Self-built variant
+  only** — the API variant (`buildEmergencyWithdrawV2`) depends on the
+  counterparty the path exists to escape; we engineer, dust-test, and shelve
+  the owner-only build (constructor 3, own collateral).
+- Unifying trigger condition: **co-sign unavailable, untrusted, or refused** —
+  a healthy-API venue wind-down uses the normal harvest + withdraw-all path,
+  forfeiting nothing; emergency is never the preferred exit.
+- Forfeiture documented as structural: pending emissions live in
+  Minswap-controlled reward reserves (harvest spends THEIR funds, hence their
+  co-sign); owner-only exit touches only our staked value — which is exactly
+  what makes it trustless. No vault ledger entry needed (emissions never
+  landed — N1); dust-cycle item (b) extended to observe this.
+- Implementation constraint: `MAX_INFLIGHT_LP` gates *initiating routine
+  crossings* only — the emergency ExitFarm blows through it by nature and must
+  not be blocked by our own guardrail.
+- v1 authorization: human/treasury per runbook (runbook itself = open point,
+  written with the vault-init treasury-form decision). Dead-man's-switch
+  automation parked in v2-ideas.

@@ -29,6 +29,6 @@ Per the scope-claims-to-evidence rule, every API/contract claim carries a tag:
 | [vault-init.md](vault-init.md) | Bootstrap: vault UTXO + thread NFT (N6) + dead shares (N2) + CIP-68 ref NFT + reference scripts | stub — duty list |
 | [enter-exit-farm.md](enter-exit-farm.md) | Vault ↔ farm custody boundary, both directions (two-hop via executor address) | drafted |
 | compound-cycle.md | Multi-tx: API harvest → MIN→pair swap → add-liquidity → stake → RecordHarvest | planned |
-| [emergency-withdraw.md](emergency-withdraw.md) | Trustless farm exit (constructor 3, owner-only) + unwind to vault | stub — trigger/scope notes |
+| [emergency-withdraw.md](emergency-withdraw.md) | Trustless farm exit (constructor 3, owner-only) + unwind to vault | drafted |
 | [rescue.md](rescue.md) | Treasury-signed stray-UTXO recovery (D10) | drafted |
 | proof-of-reserves.md | Public monitor: datum totals vs farm position (N5/D18 mitigation) | planned |

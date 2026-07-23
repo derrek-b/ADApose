@@ -67,7 +67,10 @@ result contradicts the assumption, write the superseding D-entry.
       offered — reach out). Then, in rough execution order:
       - [ ] (b) **emergency withdraw, self-built** (constructor 3, owner-only-signed,
             own collateral) — the one claim still resting on their word + our decode
-            rather than an executed tx.
+            rather than an executed tx. Also observe the returned value: staked LP
+            (+ functional NFTs) only, pending rewards forfeited — confirming the
+            emergency path needs NO vault ledger entry (emissions never landed;
+            N1 — emergency-withdraw.md).
       - [ ] (c) **full API cycle**: first-deposit → stake-more → harvest → partial
             withdraw (remaining > 0 rule observed in practice) → withdraw-all →
             first-deposit again (position-destroyed → existence predicate flips,

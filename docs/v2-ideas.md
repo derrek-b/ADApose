@@ -73,6 +73,23 @@ detector is wrong (restored LP earns no emissions).
 **Revisit trigger:** post-launch redemption traffic data — the same data the
 BUFFER_PCT starting value gets revisited with; do both together.
 
+## Automated emergency escalation (dead-man's switch)
+
+**Idea:** the executor auto-fires the pre-built emergency-withdraw + ExitFarm
+pair only after N days of continuous co-sign outage AND M days without a human
+heartbeat/veto — automation as a backstop for human *absence*, never a
+replacement for human judgment. Upgrades N5 from "trust the team to act" to
+"the system acts even if the team can't."
+**v1 decision (2026-07-23):** treasury-authorized per runbook (human in the
+loop). Every trigger except the key-incident race unfolds at human speed, a
+false positive torches real yield (forfeited emissions, unfarmed pool), and the
+marginal liveness cost is ~zero while the same operators run executor and
+treasury.
+**Cost:** careful monitoring plumbing (outage detection robust to flaky reads,
+heartbeat infrastructure, veto channel); a bug here nukes yield unprompted.
+**Revisit trigger:** team/ops growth or any decentralization push — the moment
+"the operators" and "the treasury" stop being the same people.
+
 ## Permissionless vault init (new pools without treasury)
 
 **Idea:** anyone can init a Pomona vault for a new Minswap pool.

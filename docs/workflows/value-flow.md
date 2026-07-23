@@ -30,6 +30,10 @@ Two pairs of moves, never mixed in one tx:
 
 That separation is why `total_lp` and `farmed_lp` are separate datum fields.
 
+Vault spends never share a tx (one spend, one redeemer) — they chain, one in
+flight per pool, in precedence order (D21 addendum): **RecordHarvest → ExitFarm +
+the batch it unblocks → other ApplyOrders → EnterFarm.**
+
 ## Deposit (assets in → shares out) — deposit.md
 
 Example: user deposits ADA into the NIGHT/ADA vault.

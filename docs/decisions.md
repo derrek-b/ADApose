@@ -905,6 +905,26 @@ extras-to-executor-change leak. Executor filter still excludes orders whose ridi
 ADA can't fund their own payout minUTxO (left to Cancel). Honest path unaffected:
 web orders and Minswap fills are {ADA, LP} by construction.
 
+### D21 addendum · Vault-spend precedence order (generalizes harvest-priority) — 2026-07-23
+
+Vault spends (`ApplyOrders` / `EnterFarm` / `ExitFarm` / `RecordHarvest`) can never
+share a transaction — one tx spends the vault UTXO exactly once, with exactly one
+redeemer — so per-pool serialization is physical (each vault tx chains off the
+previous output); the only design freedom is queue order. Executor scheduler policy
+(necessarily off-chain, like harvest-priority): **RecordHarvest (when triggered) →
+ExitFarm + the ApplyOrders it unblocks → other ready ApplyOrders → EnterFarm.**
+
+- Harvest first: unchanged anti-JIT-snipe rationale, plus two exit-side wins —
+  queued redeemers are paid the yield they sat through, and the
+  farm-withdraw-vs-harvest race on the position disappears.
+- ExitFarm ranks ahead of ApplyOrders only as a *prerequisite*: it exists to
+  unblock a specific `liquid?`-failed batch and runs as that batch's front half.
+- EnterFarm is lowest priority system-wide: its trigger fires off an ApplyOrders
+  landing, user-facing batches never wait on it, and the surplus computation must
+  count eligible pending redeem orders before taking the surplus — otherwise an
+  enter can manufacture a buffer miss for a batch about to fire
+  (enter-exit-farm.md names the corollary).
+
 ## D22 · Off-chain structure — DEX adapters, shared/ package, blueprint as the bridge — 2026-07-18
 
 Three structural rules for the TS side, decided before workflow docs start

@@ -28,17 +28,41 @@ construction: no partial emergency exit exists. Forfeits **all pending
 - Other qualifying circumstances TBD when this doc is written (candidates:
   Minswap farm exploit/compromise, executor key incident, venue wind-down).
 
-## Value path
+## Value path — return-to-vault is unconditional (policy, 2026-07-23)
 
 farm position (entire) → executor address → `ExitFarm` (vault value += LP,
 `farmed_lp` −= exact amount, `total_lp` unchanged) → vault-held LP; redemptions
-then proceed normally. The trustless exit lands at the **executor key**, not user
-wallets — N5; capped-capital + MPC (D18) remain the standing answer.
+then proceed normally. **The withdraw + ExitFarm pair is one unit** — "get it
+home and make the ledger true" — regardless of what triggered the emergency:
+
+1. **Ledger honesty:** until ExitFarm lands, the LP sits at the executor address
+   with `farmed_lp` still counting it — fine as a bounded in-flight state, a lie
+   if it persists (proof-of-reserves alarms; `liquid?` gates redemptions on
+   vault-held LP).
+2. **Custody quality:** the vault is validator-guarded; the executor address is
+   a bare hot key (Tier-3, the worst zone). Every emergency reason makes you
+   MORE risk-averse — never park the pool at the bare key.
+
+Terminology: "return to vault" = the ExitFarm leg (unconditional).
+"Re-stake" = going back into the farm — a separate, reason-dependent aftermath
+decision that after an emergency usually does NOT happen (whatever caused the
+emergency is the reason not to re-stake).
+
+The trustless exit lands at the **executor key**, not user wallets — N5;
+capped-capital + MPC (D18) remain the standing answer.
+
+## Aftermath by trigger (decided after the LP is safe in the vault)
+
+| Trigger | After return-to-vault |
+|---|---|
+| Sustained co-sign outage | stay unfarmed, service redemptions; note re-staking needs the API too — pool earns trading fees only until Minswap recovers |
+| Farm exploit/compromise | stay unfarmed until audited / permanently — venue decision. (AMM-itself compromise is beyond this doc: LP tokens are the problem; wind-down/redeem-out territory) |
+| Executor key incident | return-to-vault becomes a RACE — a compromised key can sweep the executor address or fire the withdraw itself. Defender's edge is preparation: withdraw + ExitFarm pre-built, submitted back-to-back. D18 capped capital is the real bound (a stolen key was always total-exposure in any design) |
+| Venue wind-down | stay unfarmed → users redeem out, or v2 re-deploys via another venue's adapter |
 
 ## Open questions (design when this doc is written properly)
 
 - Who authorizes and how (treasury signature? written runbook + threshold?).
-- Aftermath: criteria for re-staking vs. staying unfarmed vs. winding down the
-  venue; user comms/UI during the event.
+- User comms/UI during the event.
 - Accounting: pending emissions are forfeited — confirm nothing needs a
   RecordHarvest-style entry (expectation: no; datum totals never knew about them).

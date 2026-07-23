@@ -57,6 +57,22 @@ init-baked).
 spotty and script-policy attestation there is unverified.
 **Revisit trigger:** mainnet launch prep.
 
+## Adaptive buffer management
+
+**Idea:** two data-driven knobs on the redemption buffer: (a) restore-piggyback —
+when a buffer-miss exit fires during a *negative trailing net flow* window,
+withdraw `X + restore` in the same crossing instead of exact X (marginal cost ≈ 0
+vs. a future dedicated crossing); (b) dynamic `BUFFER_PCT` — auto-size the buffer
+target from observed redemption volume instead of a fixed constant.
+**v1 decision (2026-07-23):** wait-for-deposits restore (exact-X withdrawals;
+deposits rebuild the buffer for free via the EnterFarm skim line) + a fixed
+`BUFFER_PCT` starting guess (redeem.md Open point 3).
+**Cost:** flow-tracking machinery (trailing net-flow window, regime detection)
+that doesn't exist; behavior change to the exit path; drag risk if the regime
+detector is wrong (restored LP earns no emissions).
+**Revisit trigger:** post-launch redemption traffic data — the same data the
+BUFFER_PCT starting value gets revisited with; do both together.
+
 ## Permissionless vault init (new pools without treasury)
 
 **Idea:** anyone can init a Pomona vault for a new Minswap pool.

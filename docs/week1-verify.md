@@ -60,16 +60,36 @@ result contradicts the assumption, write the superseding D-entry.
       owner-sig-only, buildable trustlessly (matches our untraced decode branch).
       Auto-compounding on Minswap is viable via executor-keyed positions.
       See `reference/farm-docs/minswap-farm.md` + D19.
-- [ ] **D19 · Minswap integration verification:** (a) provision farm key-API access
-      with Minswap (they offered — reach out); (b) dust-test emergency withdraw
-      (constructor 3, owner-only-signed, self-built) on mainnet — the one claim still
-      resting on their word + our decode rather than an executed tx; (c) exercise one
-      full API cycle with dust (first-deposit → harvest → stake-more → withdraw-all)
-      and build the **CBOR verifier** (never blind-sign server-built txs — check
-      rewards→owner, restake amounts, no value leakage, expected signers); (d) confirm
-      **pending-rewards readability**: can accrued-unharvested farm rewards be read
-      (chain data or API) precisely enough to drive the compound trigger, the web's
-      dynamic tolerance floor, and the trigger-imminent warning (deposit.md Step A/C)?
+- [ ] **D19 · THE MAINNET FARM DUST CYCLE — consolidated question list.** One session,
+      real ADA dust, executor-keyed (no preprod farm exists). Every farm-related ⚠️
+      resolves here; other week1-verify items that measure during this cycle point at
+      this list. Prereq: (a) provision farm key-API access with Minswap (they
+      offered — reach out). Then, in rough execution order:
+      - [ ] (b) **emergency withdraw, self-built** (constructor 3, owner-only-signed,
+            own collateral) — the one claim still resting on their word + our decode
+            rather than an executed tx.
+      - [ ] (c) **full API cycle**: first-deposit → stake-more → harvest → partial
+            withdraw (remaining > 0 rule observed in practice) → withdraw-all →
+            first-deposit again (position-destroyed → existence predicate flips,
+            enter-exit-farm.md ENTER step 2); build + exercise the **CBOR verifier**
+            against every API-built tx (rewards→owner, amounts exact, no value
+            leakage, expected signers = owner + Minswap keys — the D19 gate).
+      - [ ] (d) **pending-rewards readability**: can accrued-unharvested rewards be
+            read (chain data or API) precisely enough to drive the compound trigger,
+            the web's dynamic tolerance floor, and the trigger-imminent warning
+            (deposit.md Step A/C)?
+      - [ ] (e) **two-hop confirmation** (enter-exit-farm.md): API-built farm txs
+            spend only owner UTxOs per the schema — verify a vault script input
+            CANNOT ride along (if it can, the single-tx crossing supersedes the
+            two-hop design).
+      - [ ] (f) **position as reference input** (RecordHarvest item below): the
+            position UTXO is referenceable and its LP value parseable in one vault
+            spend; observe required signers on a stake to corroborate the
+            no-donations assumption (adds are owner+Minswap-gated).
+      - [ ] (g) **cost measurements** (cost-model section below): fees per API tx,
+            harvest net cost (~0.5 ADA claimed), full-cycle total (~5–7 ADA
+            assumed) — these numbers size `MIN_ENTER_CHUNK` / `MAX_INFLIGHT_LP`
+            (enter-exit-farm.md Open point 4) and validate the D3 trigger threshold.
 - [ ] **~~D13 ΔLP visibility~~ → D20 · RecordHarvest enforcement:** the harvest cycle
       never touches the vault, so what stops RecordHarvest from lying about ΔLP?
       Proposed: include the executor's farm POSITION UTXO as a reference input —
@@ -77,7 +97,7 @@ result contradicts the assumption, write the superseding D-entry.
       `farmed_lp := referenced position LP` and treasury mint = fee_bps × increase.
       (N1-compatible: the farm position can't receive donations — adds are
       executor+Minswap-gated.) Verify the position UTXO is referenceable and its
-      value parseable in one vault spend.
+      value parseable in one vault spend. → executes as dust-cycle item (f) above.
 
 ## Invariant plumbing (needed before the validator is real)
 
@@ -95,7 +115,7 @@ at ApplyOrders/RecordHarvest — and per-user cost is per-ORDER in a batch.)
 
 - [ ] **Cycle cost per pool:** D20 assumes ~5–7 ADA (API harvest tx + swap order +
       add-liq order + stake tx + batcher fees + RecordHarvest). Measure for real with
-      dust once API access lands.
+      dust once API access lands. → executes as dust-cycle item (g) above.
 - [ ] **Orders per ApplyOrders batch:** how many deposit/redeem orders fit in one
       vault spend under 16KB / 14M mem / 10B steps? (Replaces the old ~20–30
       vaults-per-tx estimate.)

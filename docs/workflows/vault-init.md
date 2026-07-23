@@ -36,6 +36,9 @@ sessions. Full step-by-step TBD.
 - `deposit.md`'s asset leg needs `POMONA_ORDER_VALIDATOR_ADDR` at web-build time —
   the order validator address must be final (datum shape frozen, D21 addendum)
   before any deposit UI exists.
+- **NOT an init duty:** the first farm stake — resolved lazy (enter-exit-farm.md
+  Open point 3, 2026-07-23); the executor queries position existence before every
+  enter, so init does nothing farm-side. Don't re-add it.
 
 ## Open questions (design when this doc is written properly)
 
@@ -53,6 +56,13 @@ sessions. Full step-by-step TBD.
 - **Share asset name:** exact bytes — `(333)` label + what pool identifier?
 - **Key encoding & rotation (added 2026-07-19):** four vault redeemers are
   executor-signed and two paths treasury-signed — where do those key hashes live?
+  Decide **together with the `EnterFarm` destination pin** (enter-exit-farm.md
+  Open point 1, added 2026-07-23): pinning `destination == EXECUTOR_ADDR` in
+  EnterFarm converts executor misroute bugs into rejected txs (worthless against
+  a stolen key — that's D18's job) but names the executor address in the
+  validator, the same parameter-vs-datum coupling as the keys themselves —
+  one decision, not two. **Leaning: pin it** (one-line check; the coupling
+  exists anyway via the executor-signed `auth` checks).
   (a) **Validator parameters** — baked into the script hash; simplest, but rotation
   = new address = full migration, and there is deliberately no migrate redeemer
   (upgrade path = users redeem + re-deposit). (b) **Datum fields** — rotatable via

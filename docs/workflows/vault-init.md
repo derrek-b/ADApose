@@ -56,6 +56,12 @@ sessions. Full step-by-step TBD.
 - **Share asset name:** exact bytes — `(333)` label + what pool identifier?
 - **Key encoding & rotation (added 2026-07-19):** four vault redeemers are
   executor-signed and two paths treasury-signed — where do those key hashes live?
+  Covers BOTH keys, and for treasury also its **form** (added 2026-07-23): single
+  key vs native-script multisig vs threshold — "treasury-signed" compiles to a
+  different check under each, and treasury is the cold high-privilege identity
+  (fee shares, Rescue, emergency authorization, CIP-68 ref NFT — rescue.md Open
+  point 1 consumes this decision). Executor = hot service key; never the same
+  key, that separation is what makes D18's blast-radius pricing real.
   Decide **together with the `EnterFarm` destination pin** (enter-exit-farm.md
   Open point 1, added 2026-07-23): pinning `destination == EXECUTOR_ADDR` in
   EnterFarm converts executor misroute bugs into rejected txs (worthless against

@@ -765,6 +765,19 @@ in-tx value netting — incoming deposit LP funds outgoing redeem payouts; the v
 covers only the net difference, shrinking buffer pressure under two-sided traffic.
 Surfaced in deposit.md (Open point 3, now struck); full argument in redeem.md Step D.
 
+### D20 addendum · `farmed_lp` semantics under the two-hop crossing — 2026-07-23
+
+The co-sign API spends only owner UTxOs, so every vault↔farm crossing is two txs
+with the executor address as midpoint (enter-exit-farm.md, the two-hop finding).
+Consequence for the datum field: **`farmed_lp` means "LP outside the vault under
+executor farm-custody"** — farm position plus any in-flight remainder — not "LP
+currently staked." It increments when LP leaves the vault (EnterFarm) and
+decrements when LP re-enters (ExitFarm), i.e. the ledger moves at the VAULT
+boundary. This keeps vault-held LP == `total_lp − farmed_lp` exact by value
+conservation, and defines proof-of-reserves' reconciliation target: `farmed_lp ==
+farm position LP + executor-address LP in flight` (transient mismatch during a
+crossing is expected and bounded). Mechanics in enter-exit-farm.md.
+
 ## D21 · Deposit path — any mix of pool assets + LP, one signature, via chained Minswap order — 2026-07-18
 
 **Decision:** a Phase-1 deposit accepts any combination of {pool asset A, pool asset B,

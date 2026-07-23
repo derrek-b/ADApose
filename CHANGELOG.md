@@ -132,3 +132,30 @@ components share one repo lifecycle; split per-component if they diverge.
   guide), emergency-withdraw.md + vault-init.md stubs; docs/v2-ideas.md parking lot
   created (chained exit, zap deposits, WingRiders venue #2, CIP-26, permissionless
   init).
+
+### Vault ↔ farm boundary designed — enter-exit-farm (2026-07-23)
+
+- **Two-hop finding:** the co-sign API builds server-side and spends only *owner*
+  UTxOs (`inputsToChoose`) — a vault script input can't ride along, so every
+  vault↔farm crossing is TWO txs with the executor address as midpoint
+  (EnterFarm → API stake; API withdraw → ExitFarm). The in-flight custody window
+  is Tier-3, capped by `MAX_INFLIGHT_LP`, one crossing per pool at a time.
+  ⚠️ inferred from schema; dust-cycle item (e) confirms.
+- **`farmed_lp` semantics refined:** "LP outside the vault under executor
+  farm-custody" (farm position + in-flight) — the ledger moves at the VAULT
+  boundary, keeping vault-held == total_lp − farmed_lp exact and giving
+  proof-of-reserves its reconciliation target.
+- **Vault-spend precedence order** (D21 addendum): serialization is physical (one
+  vault spend per tx, chained); queue order is RecordHarvest → ExitFarm + the
+  batch it unblocks → other ApplyOrders → EnterFarm, with the
+  enter-counts-pending-redeems corollary.
+- **Policies resolved:** buffer-restore = wait-for-deposits (adaptive management
+  parked in v2-ideas); first-stake = lazy with a permanent position-existence
+  predicate (withdraw-all/emergency destroy the position; no farm duty at init;
+  no first-depositor exposure — the farm has no share ratio and adds are
+  owner+Minswap-gated); emergency policy = return-to-vault unconditional,
+  re-stake per-reason (aftermath table in the stub).
+- **Dust-cycle checklist consolidated:** week1-verify's D19 item is now the single
+  mainnet dust-cycle question list (a–g) — API cycle incl. partial withdraw and
+  position-destroy/recreate, verifier exercise, pending-rewards readability,
+  two-hop confirmation, position-as-reference-input, cost measurements.

@@ -61,8 +61,9 @@ C5 rate        D.total_lp / D.total_shares is monotonically non-decreasing
                across observations (deposits/redeems rate-neutral, harvests
                raise, N3 dust raises — ANY decrease ⇒ CRITICAL). C5 is N3
                restated globally (same floor inequalities), and the live alarm
-               behind the RecordHarvest fee-mint bound t ≤ floor(ΔLP·S/L)
-               (compound-cycle.md note 1). Measures LP-per-share, NOT
+               behind the harvest fee-mint bound t ≤ floor(ΔLP·S/L) — enforced
+               in the HarvestDeposit absorb branch (D23 primary; RecordHarvest
+               alternate — compound-cycle.md step 4). Measures LP-per-share, NOT
                value-per-share — impermanent loss lives inside the LP token
                and never trips C5 (dashboard copy must say so; N5).
 C6 pending     accrued-unharvested rewards (informational: trigger transparency,

@@ -101,7 +101,9 @@ result contradicts the assumption, write the superseding D-entry.
             harvest net cost (~0.5 ADA claimed), full-cycle total (~5–7 ADA
             assumed) — these numbers size `MIN_ENTER_CHUNK` / `MAX_INFLIGHT_LP`
             (enter-exit-farm.md Open point 4) and validate the D3 trigger threshold.
-- [ ] **~~D13 ΔLP visibility~~ → D20 · RecordHarvest enforcement:** the harvest cycle
+- [ ] **~~D13 ΔLP visibility~~ → D20 · RecordHarvest enforcement (RecordHarvest
+      branch only — D23 demoted the redeemer; moot if the absorb is confirmed):**
+      the harvest cycle
       never touches the vault, so what stops RecordHarvest from lying about ΔLP?
       Proposed: include the executor's farm POSITION UTXO as a reference input —
       its on-chain LP amount is the authoritative total; validator sets

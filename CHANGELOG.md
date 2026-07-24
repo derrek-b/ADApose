@@ -200,3 +200,43 @@ components share one repo lifecycle; split per-component if they diverge.
 - v1 authorization: human/treasury per runbook (runbook itself = open point,
   written with the vault-init treasury-form decision). Dead-man's-switch
   automation parked in v2-ideas.
+
+### Proof of reserves designed (2026-07-23)
+
+- proof-of-reserves.md: the D18/N5 public custody monitor — read-only,
+  stateless, anyone-can-run (open source + public chain data; our dashboard is
+  a convenience, the verifiability is the product). Six checks: locate-by-NFT,
+  internal value conservation, the headline custody reconciliation
+  (`farmed_lp == farm position + executor-address in-flight`), share supply vs
+  mint history, rate monotonicity, pending rewards (informational).
+- Tolerance design: C3 alone gets a nonzero tolerance, two-dimensional
+  (magnitude × duration — routine crossings pass, small-but-persistent leaks
+  alarm); everything else zero-tolerance CRITICAL. **No alarm-suppression
+  mode** — an emergency withdraw alarms and the incident notice explains it; a
+  monitor its operator can mute is worth less (N5). STALE ≠ green. Tier-2
+  framing mandatory: detection, never prevention.
+- Surfaced the harvest fee-mint bound `t ≤ floor(ΔLP·S/L)` (the
+  rate-non-decrease line; C5 is the live alarm behind it) — now enforced in
+  the D23 absorb branch. Deployment lean: standalone, not inside the executor
+  (the watcher shouldn't share the watched thing's fate).
+
+### D23 — compound via harvest absorb (2026-07-23/24)
+
+- compound-cycle.md drafted (last workflow doc except vault-init). The cycle's
+  add-liq order delivers to OUR order validator as a **`HarvestDeposit`** fill;
+  ApplyOrders absorbs it: value-derived ΔLP (the fill is the witness — the
+  "RecordHarvest lying" enforcement question dissolves), treasury-fee-only mint,
+  LP lands unfarmed (replenishes the buffer), EnterFarm skims later.
+  **RecordHarvest demoted to alternate shape**; the vault redeemer set shrinks
+  by one if the batcher dust test passes.
+- The one bit — does the licensed batcher fill third-party-script receivers —
+  now decides THREE things: deposit UX, compound shape, final redeemer set.
+  **RUN FIRST** (user directive: before code layout). Degraded world = pivot,
+  not death (two-step deposits; RecordHarvest compound).
+- Swap topology: ONE swap MIN→ADA + single-sided add-liq; topology is
+  adapter-level (D22). Chained fills + swap-target evaluation → v2-ideas.
+- Review resolutions: harvest-priority hold window is shape-independent (D23
+  cost miscount corrected in-entry); swap failure = kill-and-requote loop,
+  price drift = yield variance, no hedging v1+ (risk-profile inversion);
+  `min_out` ignored in HarvestDeposit (setter == outcome-producer — tautology);
+  hold-window config = baseline-then-tune.

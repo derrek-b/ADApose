@@ -18,7 +18,9 @@ down this ladder — never a skip:
   our order validator UTXO    zone 2 — user-cancellable anytime (N4)
       │  (executor: ApplyOrders)
   vault UTXO                  zone 3 — pooled, datum-tracked; the unfarmed buffer
-      │  (executor: EnterFarm / ExitFarm)
+      │  (executor: EnterFarm / ExitFarm — always TWO txs: the API farm tx can
+      │   only spend owner UTxOs, so every crossing transits the executor's
+      │   address as midpoint; enter-exit-farm.md)
   farm position               zone 4 — executor-keyed Minswap position (D18 zone)
 ```
 
@@ -31,8 +33,9 @@ Two pairs of moves, never mixed in one tx:
 That separation is why `total_lp` and `farmed_lp` are separate datum fields.
 
 Vault spends never share a tx (one spend, one redeemer) — they chain, one in
-flight per pool, in precedence order (D21 addendum): **RecordHarvest → ExitFarm +
-the batch it unblocks → other ApplyOrders → EnterFarm.**
+flight per pool, in precedence order (D21 addendum; top slot per D23): **the
+harvest-recording spend (the HarvestDeposit absorb; alternate: RecordHarvest) →
+ExitFarm + the batch it unblocks → other ApplyOrders → EnterFarm.**
 
 ## Deposit (assets in → shares out) — deposit.md
 
@@ -51,9 +54,10 @@ Example: user deposits ADA into the NIGHT/ADA vault.
    vault's value; `total_lp` += Σ lp_i; shares are **minted** to each user's
    payout address (pass-through: order extras return too). LP is now vault-held,
    **unfarmed**.
-4. **Executor: `EnterFarm`** (separate, later, policy-driven): vault-held LP above
-   the `BUFFER_PCT` buffer line moves into the executor-keyed farm position via
-   the D19 co-sign path; `farmed_lp` += that amount, `total_lp` unchanged.
+4. **Executor: `EnterFarm` crossing** (separate, later, policy-driven — two txs):
+   vault-held LP above the `BUFFER_PCT` buffer line leaves the vault to the
+   executor's address (`EnterFarm`, `farmed_lp` += amount), then the D19 co-sign
+   API tx stakes it into the farm position. `total_lp` unchanged throughout.
 
 ## Redeem (shares in → LP out) — redeem.md
 

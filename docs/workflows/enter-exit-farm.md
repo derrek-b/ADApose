@@ -84,9 +84,10 @@ in flight` (transient mismatch during a crossing is expected and bounded).
 - **Sequencing:** vault spends can never share a tx — one tx spends the vault
   UTXO exactly once, with exactly one redeemer — so per-pool serialization is
   physical: each vault tx chains off the previous one's output, one in flight
-  per pool (deposit.md Step E). Queue precedence (D21 addendum 2026-07-23):
-  **RecordHarvest (when triggered) → ExitFarm + the ApplyOrders it unblocks →
-  other ready ApplyOrders → EnterFarm.** Exit outranks only as a *prerequisite*
+  per pool (deposit.md Step E). Queue precedence (D21 addendum 2026-07-23; top
+  slot restated by D23): **the harvest-recording spend (D23 primary: the
+  HarvestDeposit absorb; alternate: RecordHarvest) → ExitFarm + the ApplyOrders
+  it unblocks → other ready ApplyOrders → EnterFarm.** Exit outranks only as a *prerequisite*
   of the batch it serves; enter is lowest system-wide — and the enter surplus
   computation must count eligible pending redeem orders first, or an enter can
   manufacture a buffer miss for a batch seconds from firing.

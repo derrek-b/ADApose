@@ -43,10 +43,18 @@
 //                                  or their orders are bricked, an N4 violation)
 //   payout: Address             -- full address (payment + stake cred) — shares/refunds
 //                                  land with the user's stake rights intact
-//   action: Deposit | Redeem(shares)
+//   action: Deposit | Redeem(shares) | HarvestDeposit
 //                                  -- Deposit carries NO amount: lp is value-derived
 //                                  (gap-2 rule, deposit.md Step D); Redeem TBD in
-//                                  redeem.md
+//                                  redeem.md; HarvestDeposit (D23) = the compound
+//                                  cycle's absorb — value-derived lp, total_lp += lp,
+//                                  mint ONLY treasury fee shares (fee-mint bound),
+//                                  NO user share mint (yield = rate event).
+//                                  HarvestDeposit IGNORES min_out (executor writes 0
+//                                  — resolved 2026-07-24): setter == outcome-producer,
+//                                  so the floor verifies a tautology; real gates are
+//                                  Minswap's on-chain minimumLP at fill + the D19
+//                                  verifier pre-sign. Keep this comment on the check.
 //   min_out: Int                -- user's slippage/limit protection
 //   deadline: POSIXTime
 //
@@ -86,7 +94,10 @@
 //                    rate event — N1). Named check `solvency`: 0 <= farmed_lp <=
 //                    total_lp survives every transition. Also the on-chain leg of
 //                    the emergency-withdraw unwind (D19).
-//   RecordHarvest -- executor-signed, post-compound: total_lp and farmed_lp += ΔLP;
+//   RecordHarvest -- ALTERNATE SHAPE ONLY (D23 demoted it; kept for the branch where
+//                    the batcher dust test fails — DELETED from the set if the
+//                    HarvestDeposit absorb is confirmed; final at vault-init):
+//                    executor-signed, post-compound: total_lp and farmed_lp += ΔLP;
 //                    treasury share mint == fee_bps × ΔLP-equivalent shares (D20 fee;
 //                    LP-units discipline — fee on emissions, never in-pool growth);
 //                    fee-mint bound (named check): t <= floor(ΔLP × total_shares /

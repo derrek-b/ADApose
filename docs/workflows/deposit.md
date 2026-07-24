@@ -125,7 +125,8 @@ separate flow. Unrelated tokens (e.g. MIN) are out of scope for Phase 1 (D21).
    Both legs carry the same datum shape: `{ pool_nft, canceller, payout, action:
    Deposit, min_shares, deadline }` (D21 addenda). `pool_nft` is the pool's thread-NFT
    asset id (N6) — the order validator is ONE script for all pools, so pool identity
-   must live in the datum; it scopes the order to exactly one vault. `canceller` is an authorization method —
+   must live in the datum; it scopes the order to exactly one vault. `canceller`
+   is an authorization method —
    `Signature(pkh) | SpendScript(hash)` — because an address can't sign: script-based
    wallets (multisig/shared) have no key to match, and a signature-only Cancel would
    brick their orders (N4 violation). `payout` is the **full address** (payment +
@@ -149,7 +150,10 @@ separate flow. Unrelated tokens (e.g. MIN) are out of scope for Phase 1 (D21).
   anyone-cancellable back to the user ✅ `CancelExpiredOrderByAnyone`,
   `reference/minswap-amm/order_validator.ak`). Funds never depend on Pomona liveness.
   ⚠️ whether the licensed batcher fills third-party-script-receiver orders at all is
-  the one open operational question (D21) — preprod dust test pending.
+  the one open operational question (D21) — preprod dust test pending, stakes raised
+  by D23 (it also decides the compound shape + final redeemer set). Degraded mode if
+  it fails: deposits go two-step (user zaps to LP on Minswap themselves, receiver =
+  own wallet; then a second signature deposits the LP with us). Worse UX, working app.
 - **Mixed deposit** → two orders, but the executor applies them TOGETHER
   (sibling-hold policy, Step C): the LP leg is held until the asset leg's fill
   arrives, then both apply in one batch at the same rate — one credit event.

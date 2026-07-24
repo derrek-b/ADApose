@@ -149,7 +149,14 @@ batch composition doesn't move the rate either. No ordering games exist inside a
 batch; uniform pricing is safe in mixed batches. (One rule to keep it true: totals
 for the batch update as net sums; every order still prices at the PRE-batch rate.)
 
-Validator checks (named, mirroring deposit.md's table): `n1_totals` (decrease exactly; vault LP delta == −Σ assets_i, no leak), `n3_round_down` (assets floor), `pool_scope`, `n4_full_service` (generalized payout equation; `assets_i >= min_out_i`; validity vs deadlines), burn gate (mint == −Σ shares_i, vault + NFT present). Plus redeem-specific: **`solvency`** — vault-held LP after payout ≥ 0 is enforced by value conservation automatically, but the datum identity `0 <= farmed_lp <= total_lp` must survive every transition (named check, paired with ExitFarm — D20 addendum 2026-07-19).
+Validator checks (named, mirroring deposit.md's table): `n1_totals` (decrease
+exactly; vault LP delta == −Σ assets_i, no leak), `n3_round_down` (assets floor),
+`pool_scope`, `n4_full_service` (generalized payout equation; `assets_i >=
+min_out_i`; validity vs deadlines), burn gate (mint == −Σ shares_i, vault + NFT
+present). Plus redeem-specific: **`solvency`** — vault-held LP after payout ≥ 0 is
+enforced by value conservation automatically, but the datum identity
+`0 <= farmed_lp <= total_lp` must survive every transition (named check, paired
+with ExitFarm — D20 addendum 2026-07-19).
 
 ## Step E — build, verify, sign, submit
 

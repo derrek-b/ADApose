@@ -90,6 +90,31 @@ heartbeat infrastructure, veto channel); a bug here nukes yield unprompted.
 **Revisit trigger:** team/ops growth or any decentralization push — the moment
 "the operators" and "the treasury" stop being the same people.
 
+## Chained fills for the compound cycle (executor address out of the loop)
+
+**Idea:** the cycle's swap order's `successReceiver` = the add-liq order itself
+(D21's chaining trick pointed back at Minswap), so MIN → ADA → LP cascades
+through the batcher without resting at the executor address — custody window
+shrinks to "MIN between harvest and swap placement."
+**v1 decision (D23):** plain sequential orders, receiver = executor; the window
+is yield-only and accumulation-bounded, so the complexity isn't warranted yet.
+**Cost:** order-chaining datum plumbing; a second layer of the
+batcher-fills-script-receivers bet (order validator = Minswap's own this time —
+separately unverified).
+**Revisit trigger:** TVL growth making the yield window material, or the D21/D23
+dust tests passing so cleanly that chaining is a small increment.
+
+## Swap-target evaluation (ADA vs NIGHT by live pool state)
+
+**Idea:** pick the cycle's swap target per-cycle by comparing effective cost
+(swap slippage + single-sided price impact) across MIN→ADA vs MIN→NIGHT routes.
+**v1 decision (D23):** always MIN → ADA — deepest MIN pool, single hop
+(MIN→NIGHT routes through ADA anyway), and at harvest scale the difference is
+pennies.
+**Cost:** live multi-pool depth reads + route math in the adapter.
+**Revisit trigger:** harvest sizes large enough that single-sided price impact
+shows up in the PoR rate telemetry.
+
 ## Permissionless vault init (new pools without treasury)
 
 **Idea:** anyone can init a Pomona vault for a new Minswap pool.

@@ -22,13 +22,19 @@ result contradicts the assumption, write the superseding D-entry.
       actually renders the CIP-68 name/ticker/decimals for a `(333)` token. CIP-26
       registry PR = optional mainnet polish; wallet support for the *testnet* registry
       is spotty and script-policy attestation there is unverified.
-- [ ] **D21 · Batcher fill policy for script receivers (the deposit path's one open
-      question):** on-chain, a fill MUST deliver LP + our exact inline datum to our
-      order validator (verified from source 2026-07-18 — `reference/minswap-amm/
-      order_validation.ak:1196`); unproven is whether the licensed batcher
-      *operationally* fills orders whose `successReceiver` is a third-party script.
-      Settle with a preprod dust test (DEPOSIT order, `customReceiver` via SDK —
-      doubles as our first executor code) + ask in the open Minswap Discord thread.
+- [ ] **D21/D23 · Batcher fill policy for script receivers — STAKES RAISED, RUN FIRST
+      (user directive 2026-07-23: before code layout begins):** on-chain, a fill MUST
+      deliver LP + our exact inline datum to our order validator (verified from
+      source 2026-07-18 — `reference/minswap-amm/order_validation.ak:1196`); unproven
+      is whether the licensed batcher *operationally* fills orders whose
+      `successReceiver` is a third-party script. This ONE bit now decides THREE
+      things (D23): the deposit UX (D21 chained path vs two-step LP-only), the
+      compound shape (HarvestDeposit absorb vs RecordHarvest + direct stake), and
+      the final vault redeemer set (RecordHarvest deleted vs kept — frozen at
+      vault-init). Settle with a preprod dust test (DEPOSIT order, `customReceiver`
+      via SDK — doubles as our first executor code) + ask in the open Minswap
+      Discord thread. Degraded world if it fails: pivot, not death (redemptions,
+      farm machinery, vault never touch the batcher).
 
 - [x] ~~**D16 · WingRiders custody model (the go/no-go):**~~ **RESOLVED 2026-07-17**
       (Blockfrost mainnet): farm positions record PUBKEY owners; owner-reclaim tx
@@ -85,10 +91,12 @@ result contradicts the assumption, write the superseding D-entry.
             spend only owner UTxOs per the schema — verify a vault script input
             CANNOT ride along (if it can, the single-tx crossing supersedes the
             two-hop design).
-      - [ ] (f) **position as reference input** (RecordHarvest item below): the
-            position UTXO is referenceable and its LP value parseable in one vault
-            spend; observe required signers on a stake to corroborate the
-            no-donations assumption (adds are owner+Minswap-gated).
+      - [ ] (f) **position as reference input** (RecordHarvest item below —
+            RecordHarvest-branch ONLY, moot if the D23 absorb is confirmed by the
+            batcher test): the position UTXO is referenceable and its LP value
+            parseable in one vault spend; observe required signers on a stake to
+            corroborate the no-donations assumption (owner+Minswap-gated) — the
+            signers observation stays useful in EITHER branch.
       - [ ] (g) **cost measurements** (cost-model section below): fees per API tx,
             harvest net cost (~0.5 ADA claimed), full-cycle total (~5–7 ADA
             assumed) — these numbers size `MIN_ENTER_CHUNK` / `MAX_INFLIGHT_LP`

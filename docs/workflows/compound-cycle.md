@@ -1,37 +1,156 @@
 <!-- Source: validators/validators/vault.ak -->
-# Workflow: Compound Cycle (STUB — accumulated notes only)
+# Workflow: Compound Cycle (harvest → LP → recorded yield)
 
-**Status: not yet designed** (deferred by choice — the biggest doc; user-paced).
-Collects facts and constraints discovered while writing the other workflow docs
-so nothing waits in breadcrumbs. Full step-by-step TBD.
+**Path:** farm emissions —API harvest→ executor —swap order→ ADA —add-liq order
+(`successReceiver` = our order validator)→ `HarvestDeposit` fill —ApplyOrders
+absorb→ vault (`total_lp` up, rate up) —EnterFarm skim→ farm.
+**Decisions:** D23 (this shape — absorb primary, RecordHarvest alternate), D3
+(trigger + weekly cap), D19 (API + verifier), D20 (fee design), D21 addenda
+(harvest-priority, precedence), D12 (swap slippage floor), D22 (adapter boundary).
+Evidence tags per `README.md` — ✅ verified / ⚠️ unverified.
 
-**Decisions feeding this doc:** D3 (trigger, weekly cap), D19 (API mutations +
-verifier), D20 (RecordHarvest + fee design), D21 addenda (harvest-priority,
-precedence order), D20 addendum 2026-07-23 (farmed_lp semantics).
+## What's new here vs. reused
 
-## Accumulated facts & constraints (so far)
+New: the trigger machinery; the first swap order we ever build (D12 floor becomes
+real); the `HarvestDeposit` action (the one new ApplyOrders branch); the
+multi-step resume story.
 
-1. **Fee-mint bound (surfaced by proof-of-reserves C5, 2026-07-23):** the
-   RecordHarvest treasury mint `t` must provably satisfy
-   **`t ≤ floor(ΔLP × total_shares / total_lp)`** — the rate-non-decrease line.
-   At fee_bps = 4.5% of the gain, `t ≈ 0.045 × ΔLP·S/L`, ~22× below the line —
-   but this is THE inequality a fee-math bug would cross, so it should be a
-   named validator check (rides with the `n1_`/mint-gate family), and
-   proof-of-reserves C5 (rate monotonicity) is the live alarm behind it.
-2. **Harvest is multi-pool single-tx first-class** (`buildMultipleHarvestsV2`,
-   own input shape — ✅ vendored doc) — irrelevant at one pool, free
-   scale-lever later.
-3. **RecordHarvest enforcement proposal** (week1-verify): farm position UTXO as
-   reference input; validator sets `farmed_lp := referenced position LP`;
-   treasury mint = fee_bps × increase. Verify referenceability at dust time
-   (item (f)).
-4. **Sequencing:** RecordHarvest holds the top of the vault-spend precedence
-   order (D21 addendum 2026-07-23); harvest-priority anti-JIT-snipe rationale.
-5. **Cycle shape (D19/D20):** API harvest → MIN→pair swap order(s) → add-liq
-   order → API stake → RecordHarvest. Steps 1–4 live entirely in executor
-   custody (zone 4 / executor address); only RecordHarvest touches the vault,
-   and it moves ledger numbers, not value (value-flow.md trace).
-6. **Trigger (D3, restated D20):** pool-level, aggregate accrued rewards ≥ 2×
-   cycle cost, weekly max cadence. Pending-rewards readability = dust item (d).
-7. **Swap slippage floor:** D12's on-chain floor parameter applies to OUR swap
-   orders in the cycle (min_receive vs spot — week1-verify D12 items).
+Reused deliberately: the D21 fill-delivery pattern (the
+absorb IS a deposit-shaped fill — same receiver, same on-chain delivery
+enforcement, same one operational ⚠️), the enter-exit crossing machinery, the
+verifier discipline, pass-through value handling.
+
+## Trigger (D3, restated pool-level in D20)
+
+Fire when: pool's aggregate pending rewards ≥ `2 × cycle_cost` (~5–7 ADA
+assumed — dust item (g) measures) AND ≥ `MIN_CADENCE` since last cycle
+(weekly cap). ⚠️ pending-rewards readability = dust item (d) — drives this
+trigger, the deposit tolerance floor, and the trigger-imminent warning.
+On fire: **harvest-priority engages** — no other ApplyOrders lands for this pool
+until the absorb (step 4) is applied (D21 addendum; anti-JIT-snipe). The hold
+window (minutes to tens of minutes, weekly) is **inherent to compounding,
+shape-independent**: it can't end before the rate event, which can't happen
+before the batcher has converted MIN → LP — both shapes contain the same two
+fills, and the absorb tail is actually one tx SHORTER than the alternate's
+(fill+absorb vs fill+stake+RecordHarvest). Nor can the hold narrow to
+redeems-only: holding deposits IS the anti-snipe point (a deposit applied
+mid-window buys the old rate and captures the imminent harvest). Deposit-order
+deadlines already price the window (`T_max` margin machinery, deposit.md Step C).
+
+## The cycle (absorb shape — D23 primary)
+
+1. **tx1 — API harvest:** `buildMultipleHarvestsV2` (✅ schema; multi-pool
+   first-class — irrelevant at one pool, free scale-lever later). Verify
+   (rewards → owner, no leakage, signers = owner + Minswap) → owner-sign →
+   submit. MIN lands at the executor address.
+2. **tx2 — swap order (ours, first swap in the system):** MIN → **ADA**, ONE
+   swap (D23: MIN/ADA is the deepest MIN pool; swap-to-NIGHT routes through ADA
+   anyway; topology is adapter-level — D22). Receiver = executor address (v1;
+   chained fills = v2-ideas). `min_receive` per the D12 slippage floor vs. spot —
+   the minimum-ADA-out bound on the swap (standard slippage protection; no
+   relation to the MIN token despite the name). Batcher fills; ADA joins the
+   executor address.
+3. **tx3 — add-liq order (ours):** single-sided ADA → NIGHT/ADA pool DEPOSIT
+   order (imbalanced deposits native — D5) with **`successReceiver` = our order
+   validator**, `successReceiverDatum` = HarvestDeposit order datum:
+   ```
+   { pool_nft, canceller: Signature(executor), payout: executor_addr,
+     action: HarvestDeposit, min_out: 0 (ignored — Open point 3), deadline }
+   ```
+   Same delivery enforcement as user deposits (✅ `validate_order_receiver`);
+   same operational ⚠️ (the one bit — below). Batcher fills; LP + mandated
+   inline datum land at our order validator.
+4. **tx4 — ApplyOrders (absorb):** the `HarvestDeposit` branch —
+   ```
+   lp        value-derived (gap-2 rule) — the fill IS the ΔLP witness
+   total_lp  += lp        farmed_lp unchanged        rate RISES (C5)
+   mint      == treasury fee shares ONLY: t = floor(fee_bps × lp × S/L)
+             (fee-mint bound t ≤ floor(lp·S/L) trivially satisfied at 4.5%;
+              NO user-style share mint — yield is a rate event, not principal)
+   payout    pass-through: order extras (minUTxO ADA) → executor
+   ```
+   Enforcement note: value-derivation makes ΔLP chain-witnessed — the executor
+   cannot overstate a harvest (the "RecordHarvest lying" problem dissolves in
+   this shape).
+5. **Later — EnterFarm skim (normal machinery):** the absorbed LP sits unfarmed,
+   replenishing the redemption buffer first (wait-for-deposits synergy); the
+   surplus above `buffer_target` enters the farm on the usual policy. One extra
+   crossing per cycle vs. the alternate shape — accepted (D23).
+
+## Custody & resume (the cycle-specific machinery)
+
+- **Custody window: yield only, never principal.** MIN then ADA rest at the
+  executor address between tx1 and tx3's fill; magnitude ≤ one accumulation
+  window (trigger ≥ 2× cycle cost, ≤ weekly cap). Principal stays in
+  vault/farm custody throughout. This bound IS the v1 mitigation (D23);
+  shrinking the window further (chained fills) is v2.
+- **Stateless resume:** cycle position is derived, never stored — what sits
+  where tells the executor what's next: MIN at executor ⇒ place swap; ADA ⇒
+  place add-liq order; pending Minswap order ⇒ wait/re-place; HarvestDeposit
+  fill at order validator ⇒ absorb; nothing ⇒ idle. Crash-safe at every seam;
+  same philosophy as the indexer everywhere else.
+- Verifier intents (new catalog entries): harvest tx (above); swap order
+  (min_receive floor, refund = executor); add-liq order (successReceiver +
+  exact datum, minimumLP, refund = executor); absorb tx (standard ApplyOrders
+  intent + the HarvestDeposit branch expectations).
+
+## Failure branches
+
+- **Swap/add-liq order killed or expired** (price moved past the floor, batcher
+  timeout) → funds refund to executor under Minswap's own rules; **re-quote at
+  current spot, re-place with a fresh floor**. Retry loop, transient, no
+  alternate path. The floor converts price drift into kill-and-requote: never a
+  fill worse than stated, but drift itself isn't dodged — see next.
+- **Fill never comes — the one structural bit (D23):** if the licensed batcher
+  won't fill third-party-script receivers, the absorb never works — and neither
+  does the D21 asset-leg deposit (same bet, same test). Degraded world:
+  deposits go two-step LP-only, compound flips to the alternate shape below.
+  Pivot, not death — redemptions, farm machinery, vault never touch the batcher.
+- **Crash mid-cycle** → stateless resume above.
+- **MIN price drift — NOT a failure branch, just yield variance:** if MIN falls
+  and stays fallen, the retry loop fills at the lower price; the harvest is
+  worth less, principal untouched, no code path changes. Exposure spans the
+  whole accrual window (emissions are MIN-denominated from the moment earned),
+  not just the cycle's minutes. Accepted, v1 and beyond absent a hard rethink
+  (2026-07-24): hedging machinery (shorts/perps) inverts the risk profile —
+  introduces principal-loss paths to smooth upside variance users already
+  accept as farm APR. The honest lever at scale is harvest cadence (shrinks
+  the accrual window), which the trigger already parameterizes.
+- **Harvest-priority starvation** (fills slow, user orders queuing) → the hold
+  is per-pool and bounded by the deposit deadline machinery; if the absorb
+  exceeds `T_max`-scale delays, orders near deadline are excluded from the next
+  batch as usual (deposit.md Step C) — the cycle never strands user orders past
+  their deadlines (n4 validity bound enforces).
+
+## Alternate shape — RecordHarvest (kept ONLY for the test-fails branch)
+
+Direct path: harvest → swap → add-liq (receiver = executor's own address —
+ordinary batcher usage, no script receiver) → API stake → `RecordHarvest` vault
+spend: `total_lp` += ΔLP, `farmed_lp` += ΔLP, treasury fee mint, ΔLP enforced
+via the farm position as a **reference input** (week1-verify proposal; dust item
+(f) — RecordHarvest-branch-only). Saves the extra EnterFarm crossing; costs the
+enforcement question and keeps a fifth redeemer. The vault.ak sketch carries
+both until the dust test picks; the redeemer set goes final at vault-init.
+
+## Open design points
+
+1. **RecordHarvest fate** — decided by the batcher dust test (the same test as
+   D21's; stakes: deposit UX + compound shape + final redeemer set). Nothing to
+   design — one bit to collect. NEXT PRIORITY per user 2026-07-23: run the dust
+   test before code layout begins.
+2. **Harvest-priority hold-window tuning** — baseline placeholders at build
+   time (`shared/` constants; e.g. `T_max` ≈ 30 min, exclusion margin ≈ 10 min,
+   sized generously — the three-clocks inequality from deposit.md fixes their
+   relationship, only the numbers are open), then tune against observed batcher
+   latency on preprod. The window itself is shape-independent (Trigger section).
+3. ~~**`min_out` semantics for HarvestDeposit.**~~ **RESOLVED 2026-07-24 —
+   ignored.** The branch does not read `min_out` (executor writes 0 by
+   convention). Why: a floor only protects when its setter and the party it
+   guards against differ — here the executor sets it AND produces the outcome,
+   so checking it verifies a tautology; refusing an already-landed fill helps
+   nobody (it would just strand LP at the order validator); and the real
+   protections live elsewhere — Minswap's own validator enforces `minimumLP`
+   at fill time (a worse fill cannot exist on-chain), and the D19 verifier
+   gates our order construction pre-sign. Carry this rationale as a code
+   comment on the check branch when vault.ak is written (sketch already notes
+   it).

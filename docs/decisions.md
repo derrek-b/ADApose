@@ -163,7 +163,8 @@ now ALSO gated on the co-sign question above.
 Aiken (validators + unit tests) · **@spacebudz/lucid** (tx building — CORRECTED
 2026-07-16: @minswap/sdk's whole API speaks SpaceBudz Lucid v0.20 via the JSR registry,
 NOT Lucid Evolution; standardized on SpaceBudz to avoid dual tx-builder stacks; JSR
-needs `.npmrc` → `@jsr:registry=https://npm.jsr.io`) · @minswap/sdk · Blockfrost or Maestro (Maestro notable: also does
+needs `.npmrc` → `@jsr:registry=https://npm.jsr.io`) · @minswap/sdk · Blockfrost or
+Maestro (Maestro notable: also does
 Bitcoin indexing — roadmap synergy) · Mesh SDK for CIP-30 wallet connect · Yaci DevKit
 for local devnet (UNVERIFIED — check current state Week 1) · preprod testnet (Minswap
 deployment exists there).
@@ -983,3 +984,47 @@ blueprint: `aiken build` emits `plutus.json` (validator hashes + datum schemas) 
 `shared/` derives addresses and validates its datum shapes FROM that artifact, never
 from hand-copied constants, so "validator changed, TS didn't" fails at build time,
 not on mainnet. Drift beyond the schema level is caught by round-trip test vectors.
+
+## D23 · Compound via harvest absorb — HarvestDeposit order path, RecordHarvest demoted to alternate — 2026-07-23
+
+**Decision:** the compound cycle's harvest re-entry runs through the SAME order
+machinery as user deposits: the cycle's add-liquidity DEPOSIT order sets
+`successReceiver` = our order validator with a **`HarvestDeposit`** order datum;
+ApplyOrders absorbs the fill with harvest semantics — `total_lp` += value-derived
+lp, `farmed_lp` untouched, mint = ONLY treasury fee shares
+`t = floor(fee_bps × lp × S/L)` (fee-mint bound trivially satisfied), no user-style
+share mint. The LP lands unfarmed (replenishes the redemption buffer — synergy with
+the wait-for-deposits restore policy) and later enters the farm via the normal
+EnterFarm skim. **RecordHarvest is demoted to the alternate shape**, kept as a
+sketch only for the branch where the batcher dust test fails.
+
+- **Why (surfaced designing compound-cycle.md, user-driven):** (1) pre-build,
+  validator surface is design-time cheap NOW and migration-expensive later —
+  validator capability has a one-way door at init; (2) the absorb adds ZERO new
+  assumptions — the batcher-fills-script-receivers bet is the same single bit D21
+  deposits already stand on (the batcher can't even distinguish the two: same
+  receiver, datum contents are our business); (3) it SIMPLIFIES the system —
+  value-derived ΔLP (gap-2 rule) dissolves the "what stops RecordHarvest lying"
+  enforcement question (reference-input proposal + its dust item become
+  RecordHarvest-branch-only), and the vault redeemer set shrinks by one if the
+  test passes.
+- **Costs accepted:** one extra EnterFarm crossing per cycle (~2 txs weekly); a
+  third ApplyOrders action branch. (NOT a cost: the harvest-priority hold window —
+  both shapes contain the same two batcher fills, the window is inherent to
+  compounding, and the absorb tail is one tx shorter. An earlier draft of this
+  entry miscounted that; corrected 2026-07-23.)
+- **Swap topology (v1):** ONE swap, MIN → ADA, then single-sided add-liq (native
+  to Minswap pools). MIN/ADA is the deepest MIN pool — swap-to-NIGHT would route
+  through ADA anyway (two hops, two slippages). Topology is ADAPTER-level (D22):
+  other venues may need two swaps + ratio math; the executor asks the adapter to
+  "convert rewards → LP," full stop. Target-token evaluation parked in v2-ideas.
+- **The one bit:** does the licensed batcher operationally fill third-party-script
+  receivers? One dust test (top of week1-verify, stakes raised: it decides the
+  deposit UX, the compound shape, AND the final redeemer set — final only at
+  vault-init, which is deliberately sequenced last). Degraded world if it fails:
+  deposits go two-step LP-only (pre-D21 shape), compound = RecordHarvest +
+  direct stake. Pivot, not death: redemptions, farm machinery, and the vault
+  never touch the batcher.
+- Chained fills (swap fill → deposit order, executor address out of the loop) =
+  v2-ideas. Cycle custody framing: window contains YIELD ONLY, ≤ one accumulation
+  window (trigger ≥ 2× cycle cost, ≤ weekly) — principal never transits the cycle.

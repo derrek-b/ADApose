@@ -82,24 +82,27 @@ The buffer itself: `BUFFER_PCT` of `total_lp` deliberately left unfarmed so
 common-case redemptions never depend on Minswap's API — executor policy, not an
 on-chain guarantee; sizing and cost tradeoff in redeem.md Step C.
 
-## Compound cycle (emissions → more LP) — compound-cycle.md (planned)
+## Compound cycle (emissions → more LP) — compound-cycle.md (D23 absorb shape)
 
-Multi-tx by design (D18/D19); the vault is only touched at the final step.
+Multi-tx by design (D18/D19); the vault is only touched at the absorb step.
 
 1. **Executor: farm-API harvest** (Minswap co-signs): accrued MIN emissions leave
    the farm → executor's address.
-2. **Executor: Minswap SWAP order(s)**: MIN → pool assets (NIGHT/ADA); batcher
-   fills back to the executor.
-3. **Executor: Minswap DEPOSIT order**: pool assets → new LP; batcher fills back
-   to the executor.
-4. **Executor: farm-API stake** (Minswap co-signs): new LP → farm position.
-5. **Executor: `RecordHarvest`** — the only vault spend in the cycle, and it moves
-   **no value**, only the ledger: `total_lp` += ΔLP, `farmed_lp` += ΔLP, and
-   treasury shares (fee_bps of the gain) are minted. This is the only transition
-   that moves the exchange rate.
+2. **Executor: Minswap SWAP order**: one swap, MIN → ADA; batcher fills back to
+   the executor.
+3. **Executor: Minswap DEPOSIT order**: single-sided ADA → LP, with
+   `successReceiver` = **our order validator** + a `HarvestDeposit` datum — the
+   fill lands in zone 2, exactly like a user deposit's asset leg.
+4. **Executor: `ApplyOrders` (absorb)**: the `HarvestDeposit` branch — LP moves
+   into the vault, `total_lp` += lp (value-derived), `farmed_lp` unchanged, and
+   ONLY treasury fee shares (fee_bps of the gain) are minted. This is the only
+   transition that moves the exchange rate — and it raises it.
+5. **Later: EnterFarm skim** — the absorbed LP replenishes the buffer first;
+   surplus enters the farm on the normal policy.
 
-Note steps 1–4 happen entirely in zone-4/executor custody — user-facing value in
-the vault and order UTxOs is never an input to the cycle.
+Steps 1–3 happen in executor custody (yield only — principal never transits the
+cycle). Alternate shape if the batcher test fails (RecordHarvest + direct stake):
+see compound-cycle.md.
 
 ## Vault init (one-time) — vault-init.md (stub)
 
@@ -114,8 +117,9 @@ needed): the **entire** farm position → executor's address, forfeiting pending
 emissions. Re-enters the vault via `ExitFarm` (same as a buffer miss), after which
 redemptions proceed normally. Triggers are admin/extraordinary only — including,
 by policy, a sustained co-sign-API outage with redemptions queued (the escalation
-rung in redeem.md Step C); no user action or queue depth fires it automatically. Note the trustless exit lands at the **executor
-key**, not user wallets — N5 honesty; D18 mitigations are the answer.
+rung in redeem.md Step C); no user action or queue depth fires it automatically.
+Note the trustless exit lands at the **executor key**, not user wallets — N5
+honesty; D18 mitigations are the answer.
 
 ## Cancel & Rescue (recovery paths)
 

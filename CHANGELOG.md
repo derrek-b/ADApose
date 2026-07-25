@@ -5,6 +5,29 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### Batcher fill-policy test — RESOLVED (2026-07-25)
+
+- **THE open structural bit is settled: the licensed Minswap batcher DOES fill
+  orders whose `successReceiver` is a third-party script.** Preprod attempt
+  first (control + probe DEPOSIT orders) sat unfilled 20+ hours — inconclusive;
+  MinTeam confirmed preprod batcher reliability isn't guaranteed. Escalated to
+  a real mainnet probe: a DEPOSIT order with `successReceiver` = a throwaway
+  script filled in ~90 seconds, confirmed 4 independent ways against raw chain
+  state (order spent, new UTXO at the receiver, inline datum matches our
+  marker byte-for-byte, fill tx distinct from our own submission).
+- **All three things this bit gated (D23) are now settled (D24):** deposit UX
+  stays D21's chained one-signature path; compound shape stays D23's
+  HarvestDeposit absorb; `RecordHarvest` is DELETED (not kept as alternate) —
+  the vault redeemer set is final.
+- **First real-money mainnet transaction of the project** (~9.5 ADA, fully
+  recovered via reclaim). Test spikes (stub validators, throwaway wallet
+  generator, control/probe/status scripts) deleted after the result was
+  captured — the on-chain txs are the permanent record, not the harness.
+- Tooling gotcha found along the way (D25): SpaceBudz Lucid's
+  `utxosByOutRef()` is spend-status-blind (queries a Blockfrost endpoint that
+  ignores spend state) — never use it to detect a fill; use `utxosAt` instead.
+  Directly relevant to the future `chain/indexer`.
+
 ### Validator
 
 - Vault validator sketch: Deposit / Withdraw / Compound paths per D1/D2 invariants

@@ -1028,3 +1028,83 @@ sketch only for the branch where the batcher dust test fails.
 - Chained fills (swap fill → deposit order, executor address out of the loop) =
   v2-ideas. Cycle custody framing: window contains YIELD ONLY, ≤ one accumulation
   window (trigger ≥ 2× cycle cost, ≤ weekly) — principal never transits the cycle.
+
+## D24 · THE ONE BIT RESOLVED — batcher fills third-party-script receivers — 2026-07-25
+
+**RESOLVES D21/D23's open dust test.** Mainnet probe (real ADA, not preprod):
+a Minswap V2 DEPOSIT order (5 ADA single-sided into the live ADA/MIN pool) with
+`successReceiver` set to a throwaway owner-gated Plutus V3 script (NOT our real
+order validator, which doesn't exist yet — a stand-in the batcher can't
+distinguish from one, since it only ever sees a `ScriptCredential` + a datum
+blob) was **filled by the licensed batcher in ~90 seconds**. Verified four ways
+directly against chain state (not just an explorer summary): the order output
+is spent; a new UTXO landed exactly at the script address; its inline datum
+matches our submitted marker **byte-for-byte** (the actual proof, per
+`EODInlineDatum`'s hash-check — not just "something arrived" but "this is
+provably the fill of *our* order"); and the fill's originating tx is distinct
+from our submission tx (a real third-party spend, not an artifact of our own
+tx construction). 18,020,218 units of ADA/MIN LP + the 2 ADA fixed rider
+landed at the receiver, matching predicted amounts exactly. Reclaimed cleanly
+back to the test wallet afterward (owner-signed spend, confirmed on-chain).
+
+- **Preprod attempt first (2026-07-24/25), inconclusive:** control (pubkey
+  receiver) and probe (script receiver, `validators/always_true.ak`) orders
+  both sat unfilled 20+ hours on preprod. Asked in the open Minswap Discord
+  thread; MinTeam confirmed they can't vouch for preprod batcher reliability
+  ("might have issues in development phase... less priority") — explains the
+  null result without resolving the question. Escalated to a small real
+  mainnet probe instead of a second preprod attempt, since the production
+  batcher has no such excuse available.
+- **Why probe-only on mainnet, no control:** unlike preprod, mainnet's batcher
+  liveness was never in doubt — the disambiguating power a control buys
+  (isolating receiver-type from "is anything running") wasn't worth spending a
+  second real order on. Plan was: fire probe alone; only add a control if it
+  sat unfilled and we needed to separate "receiver-type rejection" from
+  "something's off with us." Never needed — it filled immediately.
+- **This settles all three things D23 keyed to the bit:** (1) **deposit UX** —
+  D21's chained any-mix one-signature path stands, no fallback to two-step
+  LP-only; (2) **compound shape** — D23's HarvestDeposit absorb stands as
+  primary, confirmed rather than merely argued; (3) **final vault redeemer
+  set** — `RecordHarvest` is DELETED (not merely demoted) at vault-init; the
+  reference-input-position enforcement question and its dust-cycle item (f)
+  are moot.
+- **Test artifacts:** built as disposable spikes (`executor/src/spikes/`,
+  `validators/validators/always_true.ak` + `owner_gated.ak`), deleted after
+  this entry was written — the on-chain result is the permanent record, not
+  the harness that produced it. Mainnet probe tx:
+  `fbe69b36a1a1b825bf797694a14d4c36a08d79981f03743b576533af94709584`; fill tx:
+  `9d9c7442686d4f8c9bc838c5c230f547f673a30f7bb67cf82c10c9bb3676f75e`; reclaim
+  tx: `6d32abc21c2d41a7b1173f01359f479e69f5d66c7d64baf97a8b1ed37a201aa7` —
+  independently verifiable on any Cardano mainnet explorer, forever.
+- **First real-money mainnet transaction of the project.** ~9.5 ADA locked,
+  fully recovered (as ADA + LP) via reclaim; no loss beyond ordinary tx fees.
+
+## D25 · Blockfrost/Lucid tooling gotcha — utxosByOutRef is spend-status-blind — 2026-07-25
+
+**Discovered debugging the D24 dust test's polling script.** `lucid.utxosByOutRef()`
+(SpaceBudz Lucid's Blockfrost provider) calls Blockfrost's `GET /txs/{hash}/utxos` —
+which returns a transaction's outputs UNCONDITIONALLY, forever, regardless of
+whether they've since been spent. Lucid's own source has an unresolved comment
+admitting this (`// TODO: Make sure old already spent UTxOs are not retrievable.`).
+**Never use it to check "is this output still live"** — a fill or any other spend
+produces zero change in its result; a polling loop built on it can run forever
+without ever detecting a real spend. Use `lucid.utxosAt()` (Blockfrost
+`GET /addresses/{addr}/utxos`) instead — that endpoint only returns currently-
+unspent outputs and is the correct primitive for spend detection.
+
+- **Relevant to the future `chain/indexer`:** any fill/order-state detection logic
+  (has this deposit/redeem/HarvestDeposit order been filled yet?) must be built on
+  live-address UTXO queries, never per-tx-hash historical output lookups, or it
+  will silently never observe a spend — exactly the bug that produced a false
+  "still pending" reading during the D24 dust test (caught only because a direct,
+  multi-point on-chain check was run instead of trusting the polling script).
+- **Secondary gotcha, same investigation:** the vendored SDK's example/reference
+  MIN token constant (`e16c2dc8ae937e8d3790c7fd7168d7b994621ba14ca11415f39fed72`,
+  `reference/sdk/examples/build-tx-example.ts`) is Minswap's **TESTNET** faucet-
+  token policy — confirmed by cross-referencing `reference/sdk/src/types/constants.ts`,
+  where it's scoped under `NetworkId.TESTNET` alongside `tDJED`/`tiUSD`/`tUSDC`/
+  `tUSDT`. Easy to mistake for real mainnet MIN if an SDK example is reused for
+  mainnet work without checking network scoping. Real mainnet MIN policy ID:
+  `29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c6` (verified via
+  Cardanoscan 2026-07-25 — cross-check the raw hex length, 56 chars/28 bytes; a
+  web-search prose summary of the same page silently truncated it to 55).

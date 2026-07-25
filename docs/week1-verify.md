@@ -22,19 +22,21 @@ result contradicts the assumption, write the superseding D-entry.
       actually renders the CIP-68 name/ticker/decimals for a `(333)` token. CIP-26
       registry PR = optional mainnet polish; wallet support for the *testnet* registry
       is spotty and script-policy attestation there is unverified.
-- [ ] **D21/D23 · Batcher fill policy for script receivers — STAKES RAISED, RUN FIRST
-      (user directive 2026-07-23: before code layout begins):** on-chain, a fill MUST
-      deliver LP + our exact inline datum to our order validator (verified from
-      source 2026-07-18 — `reference/minswap-amm/order_validation.ak:1196`); unproven
-      is whether the licensed batcher *operationally* fills orders whose
-      `successReceiver` is a third-party script. This ONE bit now decides THREE
-      things (D23): the deposit UX (D21 chained path vs two-step LP-only), the
-      compound shape (HarvestDeposit absorb vs RecordHarvest + direct stake), and
-      the final vault redeemer set (RecordHarvest deleted vs kept — frozen at
-      vault-init). Settle with a preprod dust test (DEPOSIT order, `customReceiver`
-      via SDK — doubles as our first executor code) + ask in the open Minswap
-      Discord thread. Degraded world if it fails: pivot, not death (redemptions,
-      farm machinery, vault never touch the batcher).
+- [x] ~~**D21/D23 · Batcher fill policy for script receivers**~~ **RESOLVED
+      2026-07-25 — YES, see D24.** On-chain, a fill MUST deliver LP + our exact
+      inline datum to our order validator (verified from source 2026-07-18 —
+      `reference/minswap-amm/order_validation.ak:1196`); the unproven bit was
+      whether the licensed batcher *operationally* fills orders whose
+      `successReceiver` is a third-party script. Preprod attempt (2026-07-24/25,
+      control + probe orders) sat unfilled 20+ hours — inconclusive (MinTeam
+      confirmed preprod batcher reliability isn't guaranteed). Escalated to a
+      real mainnet probe: a DEPOSIT order with `successReceiver` = a throwaway
+      owner-gated script filled in ~90 seconds, datum match confirmed exact.
+      **All three things this bit decided (D23) are settled:** deposit UX stays
+      D21's chained one-signature path; compound shape stays D23's HarvestDeposit
+      absorb; `RecordHarvest` is DELETED (not kept as alternate) at vault-init.
+      Full evidence + tx hashes in D24. Test spikes deleted after the result was
+      captured — the on-chain txs are the permanent record.
 
 - [x] ~~**D16 · WingRiders custody model (the go/no-go):**~~ **RESOLVED 2026-07-17**
       (Blockfrost mainnet): farm positions record PUBKEY owners; owner-reclaim tx
@@ -91,26 +93,27 @@ result contradicts the assumption, write the superseding D-entry.
             spend only owner UTxOs per the schema — verify a vault script input
             CANNOT ride along (if it can, the single-tx crossing supersedes the
             two-hop design).
-      - [ ] (f) **position as reference input** (RecordHarvest item below —
-            RecordHarvest-branch ONLY, moot if the D23 absorb is confirmed by the
-            batcher test): the position UTXO is referenceable and its LP value
-            parseable in one vault spend; observe required signers on a stake to
-            corroborate the no-donations assumption (owner+Minswap-gated) — the
-            signers observation stays useful in EITHER branch.
+      - [ ] (f) **position as reference input** — the "referenceable +
+            parseable in one vault spend" half is MOOT (RecordHarvest deleted,
+            D24). Keep only the **signers observation**: confirm required
+            signers on a farm stake are exactly {owner, Minswap keys}, no
+            donation path — feeds proof-of-reserves' C3 custody-honesty
+            reasoning regardless of redeemer shape.
       - [ ] (g) **cost measurements** (cost-model section below): fees per API tx,
             harvest net cost (~0.5 ADA claimed), full-cycle total (~5–7 ADA
             assumed) — these numbers size `MIN_ENTER_CHUNK` / `MAX_INFLIGHT_LP`
             (enter-exit-farm.md Open point 4) and validate the D3 trigger threshold.
-- [ ] **~~D13 ΔLP visibility~~ → D20 · RecordHarvest enforcement (RecordHarvest
-      branch only — D23 demoted the redeemer; moot if the absorb is confirmed):**
-      the harvest cycle
-      never touches the vault, so what stops RecordHarvest from lying about ΔLP?
-      Proposed: include the executor's farm POSITION UTXO as a reference input —
-      its on-chain LP amount is the authoritative total; validator sets
-      `farmed_lp := referenced position LP` and treasury mint = fee_bps × increase.
-      (N1-compatible: the farm position can't receive donations — adds are
-      executor+Minswap-gated.) Verify the position UTXO is referenceable and its
-      value parseable in one vault spend. → executes as dust-cycle item (f) above.
+      - [x] ~~(h) **batcher receiver-policy probe**~~ **RESOLVED 2026-07-25,
+            ahead of the rest of this list** — ran standalone, didn't end up
+            needing prereq (a) or bundling with the farm cycle after all (only
+            needed a funded mainnet wallet, not farm API access). See D24 for
+            the full result.
+- [x] ~~**D13 ΔLP visibility → D20 · RecordHarvest enforcement**~~ **MOOT —
+      2026-07-25.** RecordHarvest is deleted, not merely demoted (D24); the
+      "what stops RecordHarvest from lying about ΔLP" question and its
+      reference-input proposal no longer apply. Dust-cycle item (f) above is
+      moot for the same reason (kept there only as the signers-observation
+      value, unrelated to this).
 
 ## Invariant plumbing (needed before the validator is real)
 
@@ -140,8 +143,14 @@ at ApplyOrders/RecordHarvest — and per-user cost is per-ORDER in a batch.)
 
 - [ ] **D7 · Yaci DevKit:** UNVERIFIED — check current state; decide emulator vs
       Yaci vs preprod-only for the dev loop.
-- [ ] **D7 · Lucid emulator:** confirm @spacebudz/lucid v0.20 emulator works for
-      validator round-trip tests before reaching for a devnet.
+- [x] ~~**D7 · Lucid emulator:** confirm @spacebudz/lucid v0.20 emulator works for
+      validator round-trip tests before reaching for a devnet.~~ **CONFIRMED
+      2026-07-25** — exercised with a real compiled PlutusV3 script (a disposable
+      owner-gated spike validator, since deleted along with the rest of the
+      batcher dust-test harness, D24): funded and spent entirely in-memory.
+      Attacker spend (no owner signature) correctly rejected (script crashed);
+      owner spend (signature declared via `addSigner`) correctly succeeded.
+      Round-trip works; safe to lean on for real validator dev going forward.
 
 ## Already verified (for the record)
 

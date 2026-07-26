@@ -5,6 +5,40 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### Deposit web-side function decomposition + WingRiders adapter evidence (2026-07-26)
+
+- **`deposit.md` Steps A (place order) and B (order lifecycle/cancel) now have
+  a full client-side function decomposition**, each function classified as
+  DEX-specific (behind the adapter), must-match-the-validator-bit-for-bit
+  (`shared/`, D22), or purely web-local: `quoteDeposit`/`buildDepositOrder`/
+  `buildCancelTx` (adapter); `previewShares`/`resolveTolerancePct`/
+  `parseVaultDatum`/`encodeOrderDatum` (`shared/`); `resolveDeadline`,
+  `checkLegStatus`, `listMyLegs`, `cancelOrder`/`cancelLegs` (web-local).
+  `buildDepositOrder` returns `Order[]` (not a single order) and `quoteDeposit`
+  returns `{expectedLP, minimumLP}` — both decided now, before WingRiders
+  exists, so its eventual adapter doesn't force a breaking interface change.
+- **D22 corrected**: adapters are cross-consumed (web + executor), not
+  executor-scoped — the web calls adapter functions directly for the user's
+  own client-signed txs. Practical implication: `adapters/` needs its own
+  workspace package, not nested under `executor/src/`.
+- **New `docs/dex-adapters.md`** — full Minswap-vs-WingRiders deposit-order
+  field comparison backing the adapter interface, including tracing that
+  `buildCancelTx(orderRef)` generalizes to WingRiders by construction (no
+  official cancel/reclaim tx-builder exists anywhere in their ecosystem —
+  checked `@wingriders/cab` directly, confirmed absent, not assumed).
+- **WingRiders evidence base deepened** (still not being implemented — Phase
+  1 is Minswap only, D20): vendored `Pool.hs`/`ConstantProduct.hs` (the
+  actual deposit LP-mint math, incl. a real product gap — two-sided
+  imbalanced deposits take a haircut instead of a swap, unlike Minswap) and
+  both official TS packages (`dex-serializer`, `dex-blockfrost-adapter`) —
+  confirmed neither has a deposit-quote or cancel-tx-building function.
+- **`vault-init.md`** gains two open questions: pool-registry recording
+  (durable thread-NFT config, since it's generated at init, not derivable
+  from `plutus.json`) and a CIP-68-style datum extensibility field (decided
+  now — see D20 addendum, `docs/decisions.md`).
+- Fixed stale D21/D23 batcher-fill-policy text in `deposit.md` that predated
+  D24's mainnet resolution (was still reading "preprod dust test pending").
+
 ### Batcher fill-policy test — RESOLVED (2026-07-25)
 
 - **THE open structural bit is settled: the licensed Minswap batcher DOES fill

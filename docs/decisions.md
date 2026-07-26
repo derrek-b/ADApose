@@ -792,6 +792,37 @@ conservation, and defines proof-of-reserves' reconciliation target: `farmed_lp =
 farm position LP + executor-address LP in flight` (transient mismatch during a
 crossing is expected and bounded). Mechanics in enter-exit-farm.md.
 
+### D20 addendum · Datum forward-compatibility field (CIP-68-style `extra: Data`) — 2026-07-26
+
+**`OrderDatum` (and, by the same argument, `VaultDatum`) gets a generic
+`extra: Data` catch-all field from day one — empty/unused for v1, reserved so
+a later addition never forces a new validator.** Surfaced designing
+`deposit.md`'s `listMyLegs`/`cancelOrder` (grouping multiple order UTxOs from
+one deposit action, `batch_id` being the motivating candidate use — not
+decided, only the slot is). Distinct from the existing CIP-68 addendum above
+(share-token *display* metadata, the `(333)`/`(100)` pair) — this is about
+our own vault/order datums' future extensibility, unrelated use of the same
+CIP.
+
+Researched, not assumed: Aiken's own docs don't state whether `expect x: T =
+data` tolerates a wire value with more fields than `T` declares, and
+Minswap's production validator (`reference/minswap-amm/pool_validator.ak:
+313-321`) only demonstrates the `..` spread pattern for ignoring *known*
+fields while reading an already-compiled type — a different question. What
+actually decided this: CIP-68 itself is the ecosystem's answer to exactly
+this problem (`[metadata, version, extra]`) — an extensibility mechanism
+wouldn't need to exist as its own CIP if naive field-appending were free —
+and both Minswap and WingRiders independently chose full versioned-type
+replacement (V1→V2, confirmed in each of their vendored/researched sources)
+over retrofitting when their own datums evolved. Given "no deploy step,
+validator hash = address," that pattern means a new validator + full user
+migration (D11: "migration = withdraw + redeposit") if the slot isn't
+reserved now. Cost of an unused `Data` field today is near-zero (marginal
+minUTxO/fee bump, zero validator complexity, never parsed); cost of adding
+it after launch is a migration, most likely discovered only once real funds
+are already live. Full reasoning + the `batch_id` candidate use in
+`vault-init.md`'s open questions.
+
 ## D21 · Deposit path — any mix of pool assets + LP, one signature, via chained Minswap order — 2026-07-18
 
 **Decision:** a Phase-1 deposit accepts any combination of {pool asset A, pool asset B,

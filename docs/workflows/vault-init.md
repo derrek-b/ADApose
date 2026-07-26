@@ -76,3 +76,50 @@ sessions. Full step-by-step TBD.
   hot and D18's threat model centers on its compromise, so "what happens after a
   key compromise" needs a real answer — and the choice shapes the init datum AND
   the hash-ordering item above (parameters feed the script hash).
+- **Pool-registry recording (added 2026-07-26, surfaced designing `deposit.md`'s
+  `readVaultState`):** the thread-NFT policy id + resulting parameterized
+  share-mint policy hash are generated *by running init*, not derivable from
+  `plutus.json` the way validator addresses are (D22 rule 3) — a one-shot
+  policy's id depends on which UTXO the init tx actually consumed, so it can't
+  be known before init runs and is only ever known that one time. Off-chain
+  readers can never trust a thread-NFT id read from a UTXO's own datum
+  (circular — a counterfeit vault has its own datum too), so it has to come
+  from a durable, independently-trusted record instead. Proposed shape (not
+  decided): (1) the init procedure **programmatically writes** the resulting
+  `{poolKey, poolId, threadNftUnit, shareAssetUnit, initTxHash}` entry the
+  moment the init tx confirms — never hand-transcribed; (2) recorded in TWO
+  places, matching this project's existing narrative-vs-machine split — a
+  dated `decisions.md` entry (citing the init tx hash, same pattern as D24)
+  for the human record, and a `shared/` config entry (D22) for the code both
+  web and executor import; (3) git-tracked, not a database — small, rare to
+  change, benefits from the same audit trail as everything else here; (4)
+  keyed by network — preprod and mainnet inits of "the same" pool produce
+  different thread-NFT policies. Exact file format/location TBD when this doc
+  is written properly; doesn't block `readVaultState`'s interface (its shape
+  only assumes *some* `poolKey → {threadNftUnit, vaultAddress}` resolution
+  exists, never depends on how it's stored).
+- ~~**Datum forward-compatibility (CIP-68-style extensibility field)**~~
+  **RESOLVED 2026-07-26, surfaced designing `deposit.md`'s `listMyLegs`/
+  `cancelOrder`:** `OrderDatum` (and, by the same argument, `VaultDatum`) gets
+  a generic `extra: Data` catch-all field from day one — empty/unused for v1,
+  reserved so a later addition never needs a new validator. Researched, not
+  assumed: Aiken's own docs don't explicitly state whether `expect x: T = data`
+  tolerates a wire value with more fields than `T` declares, and Minswap's
+  production validator (`reference/minswap-amm/pool_validator.ak:313-321`)
+  only demonstrates the `..` spread pattern for *ignoring known fields while
+  reading an already-compiled type* — a different question. What actually
+  decided this: CIP-68 itself is the ecosystem's answer to exactly this
+  problem (`[metadata, version, extra]` — an extensibility mechanism wouldn't
+  need to exist as its own CIP if naive field-appending were free), and both
+  Minswap and WingRiders independently chose full versioned-type replacement
+  (V1→V2, confirmed in each of their vendored/researched sources) over
+  retrofitting when their own datums evolved. Given "no deploy step, validator
+  hash = address," that pattern means a new validator + full user migration
+  (D11: "migration = withdraw + redeposit") if we don't reserve the slot now —
+  cost of an unused `Data` field today is near-zero (marginal minUTxO/fee
+  bump, zero validator complexity, never parsed); cost of adding it after
+  launch is a migration, most likely discovered only once real funds are
+  already live. **`batch_id`** (grouping the order UTxOs one deposit action
+  produced, so a returning user's "cancel everything" can find what
+  "everything" means beyond the current session) is one deferred candidate
+  use for this field — NOT decided now; only the generic slot is.

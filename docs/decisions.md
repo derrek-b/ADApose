@@ -985,6 +985,29 @@ blueprint: `aiken build` emits `plutus.json` (validator hashes + datum schemas) 
 from hand-copied constants, so "validator changed, TS didn't" fails at build time,
 not on mainnet. Drift beyond the schema level is caught by round-trip test vectors.
 
+### D22 addendum · Adapters are cross-consumed (web + executor), not executor-scoped — 2026-07-26
+
+Surfaced designing `docs/workflows/deposit.md`'s web-side function decomposition:
+rule 1's original text scoped adapters as "DEX adapters **(executor)**" — wrong.
+**Corrected: the web calls `adapter.quoteDeposit`/`adapter.buildDepositOrder`
+directly**, for the user's own client-signed deposit order tx — N4 means users
+sign their own order tx, so this path never routes through the executor at all.
+The executor separately calls into the same adapter for its own compound-cycle
+orders (the harvest→swap→add-liq sequence, `operations/compound_batch`) — so
+adapters have two independent, unrelated callers, not one.
+
+- **Practical implication:** `adapters/` (e.g. `adapters/minswap_v2`) needs to be
+  its own cross-consumed workspace package, not nested under `executor/src/` —
+  the web can't cleanly depend on executor-internal code. Not the SAME package
+  as `shared/` either: different concern (DEX-specific construction vs. our own
+  codecs/rate-math/config), so folding it into `shared/` would blur the D22 rule
+  1/2 boundary rather than fix the scoping error.
+- **The D19 CBOR-verifier hard rule is unaffected.** It still sits outside the
+  adapter boundary and still only gates the *executor's* hot-key signing — the
+  web's user-signed deposit tx never passes through it; the user's own wallet
+  signature is that path's trust boundary, not a hot key, so there's nothing
+  for the verifier to gate there.
+
 ## D23 · Compound via harvest absorb — HarvestDeposit order path, RecordHarvest demoted to alternate — 2026-07-23
 
 **Decision:** the compound cycle's harvest re-entry runs through the SAME order

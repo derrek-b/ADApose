@@ -44,7 +44,21 @@ fill policy disappoints.
 **v1 decision (D20):** Phase 1 = Minswap NIGHT/ADA only.
 **Cost:** a full `adapters/wingriders` implementation (different order contracts,
 datum shapes, farm mechanics) — the D22 adapter boundary exists precisely so this
-is additive.
+is additive. Not uniform across its own functions, now that both have actually
+been traced (`docs/dex-adapters.md`): `buildCancelTx` is cheap — no official
+library builds a Reclaim tx either (checked `@wingriders/cab` directly, found
+nothing DEX-specific), but every individual piece needed is already solved by
+tooling we have (Lucid + the vendored datum codec + the on-chain redeemer
+shape), confirmed by construction. `quoteDeposit`'s zap-in solve is the real
+cost — no vendored formula anywhere, genuine reimplementation + correctness
+risk against WingRiders' own 4-part fee model, unlike Minswap where the SDK
+gives it away free.
+**Prerequisite before implementation:** a WingRiders dust test (same shape as
+D24's Minswap probe) — `beneficiary`/`compensationDatum` script-receiver support
+is only source-confirmed from `Request.hs`/`Pool.hs` (field comparison in
+`docs/dex-adapters.md`), never operationally verified against their live agent.
+Don't build `adapters/wingriders` on the assumption it fills third-party-script
+orders until that's actually run.
 **Revisit trigger:** Phase 2 planning, or a Minswap gate failing in practice
 (D19 tradeoff table has the analysis).
 

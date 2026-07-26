@@ -39,6 +39,143 @@ separate flow. Unrelated tokens (e.g. MIN) are out of scope for Phase 1 (D21).
 | **Share mint policy** | mints shares, delegation-by-presence to the vault spend |
 | CBOR verifier (D19) | gates the hot-key signature on the batch tx |
 
+## Web-side function decomposition (adapter boundary)
+
+Step A's client-side work splits across a small function set, chosen so
+DEX-specific mechanics never cross the `adapters/` boundary (D22) — full
+Minswap-vs-WingRiders field comparison behind this shape lives in
+`docs/dex-adapters.md`.
+
+| Function | Owns |
+|---|---|
+| `connectWallet()` | Mesh CIP-30 handshake |
+| `readVaultState(poolKey) → {poolNft, totalShares, totalLp, farmedLp, shareAssetUnit, poolId}` | web-local wrapper: config lookup + `utxosAt` + filter by `threadNftUnit` — no DEX involved |
+| `parseVaultDatum(cborHex) → {poolId, totalShares, totalLp, farmedLp, shareAssetUnit}` — **`shared/` (D22)** | pure decode, no I/O — what `readVaultState` calls once it has the right UTXO; also the executor's indexer parses this exact shape |
+| `adapter.quoteDeposit({amountA, amountB, dexSlippagePct}) → {expectedLP, minimumLP}` | DEX-specific pricing math (Minswap's virtual-swap quadratic, WingRiders' zap-in solve) plus the DEX-side slippage haircut, hidden behind two opaque numbers — see below |
+| `previewShares({lpAmount, vaultState}) → shares` — **`shared/` (D22)** | pure N3 rate conversion, DEX-agnostic, must match the validator bit-for-bit — also used by the executor's `ApplyOrders` batch pricing (Step D) |
+| `resolveTolerancePct({vaultState}) → tolerancePct` — **`shared/` (D22)** | the dynamic tolerance-floor policy — one function, two consumers: the deposit floor calc below AND Step C's trigger-imminent warning |
+| `resolveDeadline({hasAssetLeg, userOverrideHours?}) → deadline` | web-local — `now + DEPOSIT_TTL`, floor-validated against the executor's own batch-wait window so an order can't be born unappliable — Step A #4 below. Not `shared/` itself (nothing else *computes* a fresh deposit deadline), but consumes config constants (`DEPOSIT_TTL`, `T_max`, `margin`) that do live in `shared/` (D22) |
+| `adapter.buildDepositOrder({amountA, amountB, minimumLP, receiverAddress, receiverDatum, deadline}) → Order[]` | DEX-specific order/request construction — see below |
+| `encodeOrderDatum({pool_nft, canceller, payout, action, min_shares, deadline}) → Data` — **`shared/` (D22)** | pure encode, no I/O — produces the `receiverDatum` both `buildDepositOrder` (asset leg) and `buildLpLegOutput` (LP leg) attach; the executor's indexer holds the inverse (`parseOrderDatum`, same codec module) to discover orders (Step C) |
+| `buildLpLegOutput({lp_in, datum}) → OutputSpec` | web-local wrapper: minUTxO calc + calls `encodeOrderDatum` + assembles the full output — no DEX involved, always one output |
+| `assembleDepositTx({assetLegOrders?, lpLegOutput?, deadline}) → unsigned tx` | combines whatever came back into the one signed tx from Step A #5 — throws if both legs are absent, see below |
+| `signAndSubmit(tx) → txHash` | — |
+
+**`readVaultState` is a thin web-local wrapper around a shared codec, not one
+monolithic function.** Split the same way as `previewShares`/
+`resolveTolerancePct`, for the same reason: the *decode* step
+(`parseVaultDatum`) has an independent consumer (the executor's indexer
+parses this exact shape too, and it must match bit-for-bit — D22 rule 2) and
+is pure/environment-agnostic, so it belongs in `shared/`. The *I/O* around it
+is legitimately different per side — web wants a one-shot preview read, the
+executor's indexer wants D25's two-tick confirmation discipline — so it stays
+local rather than growing options only one caller ever uses. `readVaultState`
+takes a `poolKey`, not zero args: D11 puts every pool of a DEX at the same
+validator address, so `utxosAt` alone is ambiguous once there's more than one
+pool — the function resolves `poolKey → {threadNftUnit, vaultAddress}` from
+durable per-pool config (mechanism TBD — `vault-init.md`'s "Pool-registry
+recording" open question; doesn't block this interface, see below), fetches
+`utxosAt(vaultAddress)`, filters to the UTXO whose value carries exactly one
+unit of `threadNftUnit` (N6 — never "whatever sits at the address"), then
+calls `parseVaultDatum` on that UTXO's inline datum. Every return field earns
+its place: `poolNft` gets echoed into the
+deposit order's own datum (`pool_nft`) so `ApplyOrders` can later verify
+delegation-by-presence; `totalShares`/`totalLp` are `previewShares`'s entire
+rate-math input (N1); `shareAssetUnit` is display-only (labeling the preview —
+shares are minted by the executor, not the web, so it's not required for tx
+construction); `poolId` feeds `adapter.quoteDeposit` (which Minswap pool to
+read reserves from). `farmedLp` is returned but unused in pricing (only
+`total_lp` is the rate numerator, D20 addendum) — kept for a possible
+"currently farming" UI display.
+
+**Split into `previewShares` (pure) + `resolveTolerancePct` (separate), not
+one `computePreview`.** Earlier sketches bundled both into one function, with
+`minimumLP` as a *return* value — wrong on two counts. `minimumLP` is
+DEX-specific (the adapter's job, via `quoteDeposit`), and genuinely
+*consumed* by the rate math (Step A #4: `shares_est = floor(lp × total_shares
+/ total_lp)`, where `lp` is the figure being priced), so it belongs as an
+input, not an output. And tolerance-resolution already has two unrelated
+consumers (the deposit floor below, and Step C's trigger-imminent warning) —
+bundling it into a shares-preview function would force Step C to call into
+shares math just to get a percentage, or fork a duplicate resolver:
+```
+previewShares({ lpAmount, vaultState }) → shares      -- pure N3 rate conversion, nothing else
+resolveTolerancePct({ vaultState }) → tolerancePct     -- dynamic-floor policy, shared with Step C
+```
+`lpAmount`, not `minimumLP`, because the LP leg passes `lp_in` (exact, no
+slippage concept at all) through the identical formula — a leg-agnostic name
+avoids implying every call is a protected minimum. Two calls per asset-leg
+deposit, tolerance applied inline only where it's actually needed:
+```
+display      = previewShares({ lpAmount: expectedLP, vaultState })                             -- "approximately X shares" — realistic case, no haircut
+tolerancePct = resolveTolerancePct({ vaultState })                                              -- or a user override
+floor        = floor(previewShares({ lpAmount: minimumLP, vaultState }) * (1 - tolerancePct))   -- "minimum Y shares" — this min_shares is what goes in the order datum
+```
+The LP leg only ever needs the `floor` form, called once with `lpAmount:
+lp_in` — there's no fill uncertainty on that leg, so there's nothing to
+optimistically estimate separately.
+
+**DEX-side slippage policy (config default + user override — twin of the
+tolerance policy above, not the same threat).** `minimumLP` protects the
+*asset leg* against the Minswap **pool's** price moving between quote and
+fill (other trades landing first) — a different risk than `tolerance`, which
+protects against **our own vault's** rate moving between quote and apply
+(only ever caused by a `RecordHarvest`/`HarvestDeposit` landing in between).
+Unlike `tolerance`, this one has no clean dynamic formula: the tolerance
+floor works because the threat is self-caused, bounded (compound cadence
+capped ~weekly, D3), and directly readable (pending rewards, right now); DEX
+price movement is third-party-caused, unbounded, and not directly
+observable — a real estimate would need historical volume/volatility plus a
+fill-latency model we don't have good priors for (this session's own dust
+test alone saw fills anywhere from ~90 seconds to 20+ hours). Even Minswap's
+own SDK treats this as a plain caller-supplied number
+(`calculateAmountWithSlippageTolerance`, `reference/sdk/src/calculate.ts:106`)
+with no volatility signal built in. v1: a `DEFAULT_DEX_SLIPPAGE_PCT` config
+constant (same tier as `DEFAULT_TOLERANCE`, D22's `shared/`), user-overridable
+(advanced setting), same as `tolerance`. The percentage is DEX-agnostic
+config; *applying* it to produce `minimumLP` stays adapter-owned (Minswap via
+the SDK call above; WingRiders would need its own version of the same
+haircut — no off-chain library does it there either, `docs/dex-adapters.md`).
+
+**`buildDepositOrder` returns `Order[]`, not a single order.** `type Order =
+{ outputs: OutputSpec[] }`. Minswap always returns exactly one entry (its order
+output, plus — when the receiver is a script — a datum-preimage output the SDK
+auto-adds; that's plumbing inside one order, not a second order). WingRiders
+may need two independently-fillable requests for a two-sided imbalanced
+deposit (WingRiders' AddLiquidity only auto-swaps a *single-sided* deposit —
+`docs/dex-adapters.md` has the on-chain evidence). `assembleDepositTx` just
+does `orders.flatMap(o => o.outputs)` — it never branches on which DEX
+produced the list or why it has one entry or two. Decided now, while it costs
+nothing, so a future WingRiders adapter doesn't force a breaking change to
+this interface later — not because WingRiders is being built now (D20 scopes
+Phase 1 to Minswap only).
+
+**`buildLpLegOutput` splits the same way, around `encodeOrderDatum`.** The
+*encode* step has two consumers that have nothing to do with each other and
+nothing to do with the LP leg specifically: `buildDepositOrder`'s asset leg
+also needs an encoded `receiverDatum` to hand Minswap's `customReceiver`
+option, and the executor's indexer needs the inverse (`parseOrderDatum`) to
+discover orders at all (Step C: "parses? datum casts to `OrderDatum`"). One
+codec module, `shared/`, both directions — matches D22 rule 2's `OrderDatum`
+example exactly. `buildLpLegOutput` itself stays web-local: it computes the
+LP leg's minUTxO, calls `encodeOrderDatum`, and assembles the final Lucid
+output — none of that has a reason to live anywhere else.
+
+**`assembleDepositTx`: both legs optional, but not both absent.** "What the
+user deposits (D21)" already covers three shapes — asset-only, LP-only, or
+mixed — so `assetLegOrders` was under-specified as required; a user who
+already holds LP has no reason to touch Minswap at all, meaning there's
+nothing for `adapter.buildDepositOrder` to produce and no asset leg exists.
+Both params are optional; the only real constraint is that at least one must
+be present. **Checked in two places, not one:** the UI won't let a user
+submit an empty deposit form, but `assembleDepositTx` throws if both are
+absent anyway rather than trusting the caller — not a security boundary
+(this is off-chain, nothing adversarial rides on it), just correctness:
+called with both absent, this function would otherwise silently emit a tx
+with no deposit-related outputs at all, which is a real bug class (something
+upstream miscounted legs) worth failing loudly on rather than producing a
+pointless transaction.
+
 ## Step A — user places the order(s) (web, one signature)
 
 1. **Connect** wallet via Mesh CIP-30; get payment address.
@@ -76,7 +213,7 @@ separate flow. Unrelated tokens (e.g. MIN) are out of scope for Phase 1 (D21).
    D3), so worst case ≈ one week of pool yield.
 
    **Tolerance policy — config default + dynamically computed floor (twin of the
-   deadline policy, Step B).** The threat is one knowable quantity: rewards accrued
+   deadline policy below).** The threat is one knowable quantity: rewards accrued
    but not yet harvested at quote time — the same data the compound trigger watches:
    ```
    pending_jump  = accrued-unharvested rewards as % of total_lp   -- read at quote time
@@ -95,6 +232,32 @@ separate flow. Unrelated tokens (e.g. MIN) are out of scope for Phase 1 (D21).
    warning (Step C). ⚠️ precision of reading pending farm rewards off-chain is
    unverified (Minswap emission accounting reproducibility — confirm in the D19 dust
    cycle); the buffer absorbs approximation error.
+
+   **Deadline policy — config with a dynamic anchor, never dynamically computed
+   (`resolveDeadline`).** Web sets `deadline = now + DEPOSIT_TTL` (config constant,
+   order of hours; user-overridable as an advanced setting). It doesn't react to
+   network conditions because the economic protection is `min_shares` — however
+   late an order applies, it can't apply below the user's floor; `deadline` only
+   bounds intent staleness, which is a preference, not a market variable. Three
+   clocks must order correctly (all config):
+   ```
+   MINSWAP_EXPIRY   (their expiry_setting, optional)   -- bounds the fill phase
+   T_max + margin   (executor batch policy, Step C)    -- bounds our phase
+   DEPOSIT_TTL      (our datum deadline)               -- bounds the whole journey
+
+   rule 1:  DEPOSIT_TTL > MINSWAP_EXPIRY + T_max + margin
+            -- a fill arriving at the last Minswap moment still gets a full batch window;
+            -- if Minswap expires unfilled, CancelExpiredOrderByAnyone refunds the user
+            -- and our order never materializes — clean
+   rule 2:  web REFUSES deadline < min_deadline = MINSWAP_EXPIRY + T_max + margin
+            -- (LP-only deposits drop the MINSWAP_EXPIRY term)
+   ```
+   Rule 2 is user protection, not polish: a deadline shorter than one batch cycle +
+   margin creates an order that is **born unappliable** — the executor's deadline-margin
+   rule excludes it forever, and the user paid the tx fee (+ 2 ADA batcher fee on the
+   asset leg) for a guaranteed no-op ending in Cancel. Note `T_max`/`margin` are executor
+   behavior but define the web's validation floor — shared config source, not duplicated
+   magic numbers (`shared/`, D22).
 5. **Build ONE tx** with up to two order outputs plus the datum-registration output:
 
    **Asset leg (NIGHT and/or ADA, any ratio)** — via `@minswap/sdk` `createOrdersTx`
@@ -149,11 +312,13 @@ separate flow. Unrelated tokens (e.g. MIN) are out of scope for Phase 1 (D21).
   under Minswap's own rules (`canceller` = user; expired orders also
   anyone-cancellable back to the user ✅ `CancelExpiredOrderByAnyone`,
   `reference/minswap-amm/order_validator.ak`). Funds never depend on Pomona liveness.
-  ⚠️ whether the licensed batcher fills third-party-script-receiver orders at all is
-  the one open operational question (D21) — preprod dust test pending, stakes raised
-  by D23 (it also decides the compound shape + final redeemer set). Degraded mode if
-  it fails: deposits go two-step (user zaps to LP on Minswap themselves, receiver =
-  own wallet; then a second signature deposits the LP with us). Worse UX, working app.
+  ✅ **RESOLVED 2026-07-25 (D24)** — the licensed batcher DOES fill
+  third-party-script-receiver orders, confirmed via a real mainnet probe (not
+  just source-verified). This failure branch is now a genuine edge case
+  (outage/policy), not a standing open question — but the recovery path holds
+  regardless: deposits degrade to two-step (user zaps to LP on Minswap
+  themselves, receiver = own wallet; then a second signature deposits the LP
+  with us). Worse UX, working app.
 - **Mixed deposit** → two orders, but the executor applies them TOGETHER
   (sibling-hold policy, Step C): the LP leg is held until the asset leg's fill
   arrives, then both apply in one batch at the same rate — one credit event.
@@ -166,33 +331,6 @@ An asset-leg deposit passes through two custody zones, each with its own
 user-unilateral exit: first **Minswap's order** (canceller = user, refunds to user),
 then — after fill, typically a block or two — **our order UTXO**. The LP leg starts in
 zone two directly.
-
-**Deadline policy — config with a dynamic anchor, never dynamically computed.** Web
-sets `deadline = now + DEPOSIT_TTL` (config constant, order of hours;
-user-overridable as an advanced setting). It doesn't react to network conditions
-because the economic protection is `min_shares` — however late an order applies, it
-can't apply below the user's floor; `deadline` only bounds intent staleness, which is
-a preference, not a market variable. Three clocks must order correctly (all config):
-
-```
-MINSWAP_EXPIRY   (their expiry_setting, optional)   -- bounds the fill phase
-T_max + margin   (executor batch policy, Step C)    -- bounds our phase
-DEPOSIT_TTL      (our datum deadline)               -- bounds the whole journey
-
-rule 1:  DEPOSIT_TTL > MINSWAP_EXPIRY + T_max + margin
-         -- a fill arriving at the last Minswap moment still gets a full batch window;
-         -- if Minswap expires unfilled, CancelExpiredOrderByAnyone refunds the user
-         -- and our order never materializes — clean
-rule 2:  web REFUSES deadline < min_deadline = MINSWAP_EXPIRY + T_max + margin
-         -- (LP-only deposits drop the MINSWAP_EXPIRY term)
-```
-
-Rule 2 is user protection, not polish: a deadline shorter than one batch cycle +
-margin creates an order that is **born unappliable** — the executor's deadline-margin
-rule excludes it forever, and the user paid the tx fee (+ 2 ADA batcher fee on the
-asset leg) for a guaranteed no-op ending in Cancel. Note `T_max`/`margin` are executor
-behavior but define the web's validation floor — shared config source, not duplicated
-magic numbers (remember when `web/` is scaffolded).
 
 The order UTXO at our validator is spendable exactly three ways:
 
@@ -208,9 +346,102 @@ The order UTXO at our validator is spendable exactly three ways:
   recovery is "at treasury discretion" (N5 wording), the backstop for frontend
   serialization bugs on the asset leg.
 
-Deadline semantics: `ApplyOrders'` tx validity range must end **before** every spent
+Deadline semantics (value set in Step A #4 via `resolveDeadline` — this is only
+its enforcement): `ApplyOrders'` tx validity range must end **before** every spent
 order's `deadline`. Expired orders are simply never applied; the user reclaims via
 Cancel (web shows a "reclaim" button). The executor never gains a recovery power.
+
+**Cancel — web-side mechanics.** Two mechanisms, matching the two custody zones
+above — not one bundled action:
+
+| Function | Owns |
+|---|---|
+| `cancelOrder(orderRef) → txHash` | web-local wrapper: detects which zone `orderRef` currently sits in, dispatches to whichever mechanism applies, handles the resubmit-on-race flow below |
+| `adapter.buildCancelTx(minswapOrderRef) → tx` | DEX-specific — wraps Minswap's own `cancelOrder`/`cancelExpiredOrders` (✅ `reference/sdk/src/dex-v2.ts:915,982`) |
+| `buildOurCancelTx(orderRef) → tx` | not DEX-specific — spends our own order UTXO via the `Cancel` redeemer; identical whether the UTXO came from a filled asset leg or a direct LP-leg deposit |
+
+`cancelOrder` is **targeted — one call, one UTXO** — deliberately not a single
+action that bundles both legs of a mixed deposit into one combined transaction.
+Bundling would mean spending from two different script addresses (Minswap's +
+ours) in one atomic tx when the asset leg hasn't filled yet, which adds real
+complexity (satisfying two independently-designed validators' witness
+requirements at once) and a real failure mode: if the asset leg fills in the
+gap between building and submitting, the *whole* combined tx fails — including
+the LP leg's cancel, which was valid and unrelated to the race. Targeted cancel
+avoids both: bulk cancellation (`cancelLegs`, below) is UI-level orchestration
+over `cancelOrder`, not its own transaction-building path — a failure on one
+leg never takes another down with it.
+
+**The race this doesn't fully eliminate, and how it's handled — no auto-resubmit
+is possible, by CIP-30's own design.** Between `cancelOrder` checking which zone
+an order is in and the signed cancel tx actually landing on-chain, Minswap's
+batcher can fill the order (fills have landed in as little as ~90 seconds this
+project's own dust test, D24) — the targeted UTXO no longer exists, and
+submission fails with a standard, detectable "input already spent" rejection,
+never silently. Recovery can't be automatic: each distinct transaction body
+needs its own explicit, wallet-prompted signature — a dApp cannot pre-authorize
+"sign whatever tx turns out to be needed," by CIP-30 design, precisely so a
+compromised or buggy dApp can't silently drain a wallet. So `cancelOrder`
+catches that specific failure, re-runs its zone check (now finds the order at
+our own validator instead), and prompts the user again — framed as a
+continuation ("your deposit just filled — cancel the resulting order instead?"),
+not a bare error, since a fill mid-cancel is progress, not necessarily bad news:
+the user is now one step closer to shares, and may reasonably choose to let it
+proceed instead of cancelling a second time. Contrast with Step D's *executor*-side
+version of this exact race ("User cancels mid-build... Recovery: re-derive
+UTXO set, rebuild without it, re-verify, resubmit") — that one auto-recovers
+with no human involved, because the executor is re-signing its own rebuilt tx
+with its own hot key. The web can't copy that pattern; the missing signature
+belongs to the user's wallet, not a key Pomona holds. One mitigation worth
+having regardless, though it narrows the window rather than closing it (eUTXO
+means it can never fully close): re-check the targeted UTXO's existence as
+close to actual submission as practical, not just once at the start of the flow.
+
+**Leg discovery & status — web-side mechanics.**
+
+| Function | Owns |
+|---|---|
+| `checkLegStatus(legRef) → { state: 'pending'\|'pending_expired'\|'not_found', zone?: 'minswap'\|'adapose' }` | web-local; live-state only, never inspects a spent UTXO's history — D25-safe by construction, since it's built entirely on `utxosAt`-style reads |
+| `listMyLegs(walletAddress) → Leg[]` | web-local; the from-nothing recovery path — scans both zone addresses, filters by `payout`/`canceller` matching the wallet, needs zero client-side memory to work. Built on `parseOrderDatum` (`shared/`, D22) — introduces no new `shared/` need of its own |
+| `cancelLegs(legRefs: LegRef[]) → txHash[]` | web-local orchestration over `cancelOrder` — `legRefs.map(ref => cancelOrder(ref))`, one independent tx per leg, never bundled (same reasoning as above) |
+
+**`checkLegStatus` deliberately never distinguishes *applied* from *cancelled*
+once a leg is `not_found` — not a gap, a considered choice.** Both are
+terminal, non-actionable states, and the wallet balance already shows the
+outcome directly (shares if applied, LP or original assets back if
+cancelled) — there's no user-facing value in Pomona re-deriving which
+happened when the result is already visible for free. The one case where the
+distinction *would* matter — a leg the user just cancelled themselves — is
+already known with certainty from the client's own action (`cancelOrder`
+returns a `txHash`; once it confirms, no on-chain inference is needed to
+"prove" it was a cancel). Building a classifier that chases down a spent
+UTXO's spending transaction to distinguish `Apply` from `Cancel` after the
+fact has no real caller once that's accounted for.
+
+**No persistence, no database, anywhere in this — and that's the actual
+answer to "what happens on refresh."** `listMyLegs` needs nothing but a
+freshly-connected wallet address to fully reconstruct what's pending, at any
+distance in time — 30 seconds after placing a deposit or three years later,
+identically. Session/component state (e.g. Redux) is a disposable cache for
+snappy in-session UX, never a source of truth anything depends on surviving.
+Same discipline Step D's failure branches already state for the *executor's*
+indexer ("No off-chain ledger to reconcile — the chain is the only state") —
+applied here to the web for the identical reason.
+
+**`cancelLegs` is always available, not scoped to "the deposit I just
+placed."** An earlier version of this design fed it from session memory
+right after Step A's submission — rejected: that makes the bulk-cancel
+option appear right after depositing and then silently vanish on refresh,
+which is a worse UX than either "always available" or "never available." The
+corrected design: `cancelLegs` is driven entirely by manual multi-select
+from whatever `listMyLegs` currently shows, working identically regardless
+of session age — a user with three pending legs from three unrelated
+deposits spread across weeks can select and cancel any combination, the same
+way, every time. `batch_id` (`vault-init.md`'s deferred extensibility-field
+candidate) would only ever affect *display* under this design — e.g.
+visually clustering legs from one deposit action, or pre-checking their
+boxes right after a fresh submission as a convenience — never `cancelLegs`'s
+actual availability or mechanism, which stays uniform either way.
 
 **Failure branches (B):**
 - Order lands with malformed/missing datum → Cancel and Apply both fail at the datum
@@ -221,6 +452,10 @@ Cancel (web shows a "reclaim" button). The executor never gains a recovery power
   (the ledger demands the preimage before any validator runs); no rescue possible.
   Policy: we only ever emit inline datums (Minswap fills are forced inline by
   `EODInlineDatum`).
+- **Order moves zones mid-cancel** (asset leg fills between `cancelOrder`'s zone
+  check and submission) → submission fails on the now-consumed input, never
+  silently → `cancelOrder` re-checks and re-prompts (above); not a Rescue case,
+  the order is perfectly well-formed, it just moved.
 
 ## Step C — executor discovers + filters
 
@@ -388,6 +623,14 @@ indexer marks orders applied.
 5. ~~**v1 deposit asset = LP tokens only.**~~ **SUPERSEDED 2026-07-18 by D21** — any
    mix of pool assets + LP in one signature via chained Minswap DEPOSIT order with
    `successReceiver` = our order validator (on-chain-enforced delivery, verified from
-   source). One open operational question remains: does Minswap's licensed batcher
-   fill third-party-script-receiver orders in practice? → preprod dust test
-   (week1-verify).
+   source). ~~One open operational question remains: does Minswap's licensed batcher
+   fill third-party-script-receiver orders in practice?~~ **RESOLVED 2026-07-25 —
+   YES, see D24** (real mainnet probe, not just source-verified).
+6. **Web-side order status detection: poll vs. push — UNDECIDED.** After Step A's
+   submit, how does the frontend learn an order was applied (shares landed)? Plain
+   Blockfrost REST is poll-only. Two push alternatives exist but aren't evaluated
+   yet: Blockfrost Webhooks (needs a backend receiver — can't target a browser tab
+   directly; filter granularity unverified) or raw node chain-sync (different infra
+   commitment). Deliberately deferred — evaluate alongside the executor indexer's own
+   polling-vs-webhook question (separate scope, not decided here) before committing
+   either to poll.

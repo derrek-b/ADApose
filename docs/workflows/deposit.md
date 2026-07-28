@@ -54,7 +54,7 @@ Minswap-vs-WingRiders field comparison behind this shape lives in
 | `adapter.quoteDeposit({amountA, amountB, dexSlippagePct}) → {expectedLP, minimumLP}` | DEX-specific pricing math (Minswap's virtual-swap quadratic, WingRiders' zap-in solve) plus the DEX-side slippage haircut, hidden behind two opaque numbers — see below |
 | `previewShares({lpAmount, vaultState}) → shares` — **`shared/` (D22)** | pure N3 rate conversion, DEX-agnostic, must match the validator bit-for-bit — also used by the executor's `ApplyOrders` batch pricing (Step D) |
 | `resolveTolerancePct({vaultState}) → tolerancePct` — **`shared/` (D22)** | the dynamic tolerance-floor policy — one function, two consumers: the deposit floor calc below AND Step C's trigger-imminent warning |
-| `resolveDeadline({hasAssetLeg, userOverrideHours?}) → deadline` | web-local — `now + DEPOSIT_TTL`, floor-validated against the executor's own batch-wait window so an order can't be born unappliable — Step A #4 below. Not `shared/` itself (nothing else *computes* a fresh deposit deadline), but consumes config constants (`DEPOSIT_TTL`, `T_max`, `margin`) that do live in `shared/` (D22) |
+| `resolveDeadline({hasAssetLeg, userOverrideHours?}) → deadline` | web-local — `now + DEPOSIT_TTL`, floor-validated against the executor's own batch-wait window so an order can't be born unappliable — Step A #4 below. Not `shared/` itself (nothing else *computes* a fresh deposit deadline), but consumes config constants (`DEPOSIT_TTL`, `T_max`, `DEADLINE_MARGIN`) that do live in `shared/` (D22) |
 | `adapter.buildDepositOrder({amountA, amountB, minimumLP, receiverAddress, receiverDatum, deadline}) → Order[]` | DEX-specific order/request construction — see below |
 | `encodeOrderDatum({pool_nft, canceller, payout, action, min_shares, deadline}) → Data` — **`shared/` (D22)** | pure encode, no I/O — produces the `receiverDatum` both `buildDepositOrder` (asset leg) and `buildLpLegOutput` (LP leg) attach; the executor's indexer holds the inverse (`parseOrderDatum`, same codec module) to discover orders (Step C) |
 | `buildLpLegOutput({lp_in, datum}) → OutputSpec` | web-local wrapper: minUTxO calc + calls `encodeOrderDatum` + assembles the full output — no DEX involved, always one output |
@@ -120,7 +120,7 @@ tolerance policy above, not the same threat).** `minimumLP` protects the
 *asset leg* against the Minswap **pool's** price moving between quote and
 fill (other trades landing first) — a different risk than `tolerance`, which
 protects against **our own vault's** rate moving between quote and apply
-(only ever caused by a `RecordHarvest`/`HarvestDeposit` landing in between).
+(only ever caused by a `HarvestDeposit` landing in between).
 Unlike `tolerance`, this one has no clean dynamic formula: the tolerance
 floor works because the threat is self-caused, bounded (compound cadence
 capped ~weekly, D3), and directly readable (pending rewards, right now); DEX
@@ -207,7 +207,7 @@ pointless transaction.
    ApplyOrders == before (up to dust remainders, which N3 sends the pool's way). Any
    number of pending zap-ins can land ahead of a user without touching their quote —
    same reason buying into a mutual fund doesn't move its NAV. The ONLY event that
-   moves the rate between quote and apply is `RecordHarvest` (raises LP-per-share →
+   moves the rate between quote and apply is `HarvestDeposit` (raises LP-per-share →
    lowers shares-per-LP). Per-harvest movement is bounded by the max accumulation
    window (trigger fires at ≥2× cycle cost but is also capped to ~weekly cadence —
    D3), so worst case ≈ one week of pool yield.
@@ -242,21 +242,22 @@ pointless transaction.
    clocks must order correctly (all config):
    ```
    MINSWAP_EXPIRY   (their expiry_setting, optional)   -- bounds the fill phase
-   T_max + margin   (executor batch policy, Step C)    -- bounds our phase
+   T_max + DEADLINE_MARGIN  (executor batch policy, Step C)  -- bounds our phase
    DEPOSIT_TTL      (our datum deadline)               -- bounds the whole journey
 
-   rule 1:  DEPOSIT_TTL > MINSWAP_EXPIRY + T_max + margin
+   rule 1:  DEPOSIT_TTL > MINSWAP_EXPIRY + T_max + DEADLINE_MARGIN
             -- a fill arriving at the last Minswap moment still gets a full batch window;
             -- if Minswap expires unfilled, CancelExpiredOrderByAnyone refunds the user
             -- and our order never materializes — clean
-   rule 2:  web REFUSES deadline < min_deadline = MINSWAP_EXPIRY + T_max + margin
+   rule 2:  web REFUSES deadline < min_deadline = MINSWAP_EXPIRY + T_max + DEADLINE_MARGIN
             -- (LP-only deposits drop the MINSWAP_EXPIRY term)
    ```
    Rule 2 is user protection, not polish: a deadline shorter than one batch cycle +
-   margin creates an order that is **born unappliable** — the executor's deadline-margin
-   rule excludes it forever, and the user paid the tx fee (+ 2 ADA batcher fee on the
-   asset leg) for a guaranteed no-op ending in Cancel. Note `T_max`/`margin` are executor
-   behavior but define the web's validation floor — shared config source, not duplicated
+   `DEADLINE_MARGIN` creates an order that is **born unappliable** — the executor's
+   `DEADLINE_MARGIN` rule excludes it forever, and the user paid the tx fee (+ 2 ADA
+   batcher fee on the asset leg) for a guaranteed no-op ending in Cancel. Note
+   `T_max`/`DEADLINE_MARGIN` are executor behavior but define the web's validation
+   floor — shared config source, not duplicated
    magic numbers (`shared/`, D22).
 5. **Build ONE tx** with up to two order outputs plus the datum-registration output:
 
@@ -319,11 +320,14 @@ pointless transaction.
   regardless: deposits degrade to two-step (user zaps to LP on Minswap
   themselves, receiver = own wallet; then a second signature deposits the LP
   with us). Worse UX, working app.
-- **Mixed deposit** → two orders, but the executor applies them TOGETHER
-  (sibling-hold policy, Step C): the LP leg is held until the asset leg's fill
-  arrives, then both apply in one batch at the same rate — one credit event.
-  Escape hatch: sibling killed/refunded or hold timeout → apply the LP leg alone.
-  UI shows one pending item that can degrade to two.
+- **Mixed deposit** → two orders, applied INDEPENDENTLY as each becomes
+  eligible — no sibling-hold (deferred, `v2-ideas.md`: cosmetic only, each
+  leg's own `min_shares` floor already protects it regardless of timing, not
+  worth the state-machine complexity for v1). The LP leg typically applies
+  first (no Minswap fill-latency); the asset leg follows once its fill lands
+  — two separate credit events, possibly at slightly different rates if a
+  `HarvestDeposit` lands in between, each still individually fair. UI can
+  show them as two pending items from the start.
 
 ## Step B — order lives on chain (N4 zone)
 
@@ -459,6 +463,81 @@ actual availability or mechanism, which stays uniform either way.
 
 ## Step C — executor discovers + filters
 
+**Executor-side function decomposition.** Same split discipline as Step A/B —
+`shared/` where logic must match on-chain behavior bit-for-bit, executor-local
+otherwise. Deposit branch only for now (Redeem/HarvestDeposit filtering waits
+for their own workflow passes).
+
+| Function | Owns |
+|---|---|
+| `discoverOrders() → RawUtxo[]` | the one Blockfrost call per tick — `lucid.utxosAt(orderAddress)`, on the 60s scheduler tick (why 60s, why polling not event-driven — below). Covers every pool in one call: the order validator is shared across all pools (D21 addendum), so pool count never multiplies this fetch |
+| `excludeCached(rawUtxos, ineligibleCache) → RawUtxo[]` | cheap pre-filter — drops refs already known permanently ineligible before the expensive decode/check work runs (below) |
+| `categorizeOrders(rawUtxos) → Map<poolKey, CategorizedOrder[]>` | groups by pool (`pool_nft` → `poolKey` via the pool-registry config, `vault-init.md`) and tags each order's `action` (Deposit/Redeem/HarvestDeposit) — read from the same field the web sets via `encodeOrderDatum`. "Parses?" and pool-matching are inherent here, not separate checks (below) |
+| `filterEligible(orders, vaultState) → {eligible, ineligible}` | per pool — `fresh?`/`satisfiable?`, deposit branch only |
+
+**Why polling, not event-driven.** Cardano has no native event system — a
+transaction doesn't emit anything a listener can subscribe to; a UTXO just
+exists or gets consumed. The two real alternatives both sit outside the base
+protocol: Ouroboros chain-sync (a persistent node connection, filter blocks
+yourself) or Blockfrost Webhooks (they POST to an endpoint on a configured
+trigger). Checked against what we actually have: the free Blockfrost tier
+gives exactly **one** webhook, and the executor has multiple things to watch
+(order discovery, farm-reward/compound-trigger monitoring, eventually
+per-pool state) — one webhook can't cover all of it, so push can't be the
+general mechanism here. Polling stays primary.
+
+**Why 60s, not the aggressive end of a 20–60s range.** Free tier budget is
+50,000 requests/day, shared across everything the executor (and, if not
+split into a separate project, the web) does — not just this one poll.
+`86400 / interval = requests/day`: 20s costs 4,320/day (8.6% of the whole
+budget) just for this one recurring check; 60s costs 1,440/day (2.9%).
+Given other concerns compete for the same budget (trigger monitoring, actual
+transaction-building reads, the D19 verifier's own reads) and there's no
+margin to spare, 60s was chosen deliberately over a snappier interval —
+sub-minute latency doesn't buy a pitch-day demo anything a human watching
+would notice.
+
+**Why "parses?" and pool-matching aren't separate eligibility checks.** You
+can't categorize what you can't parse or place in a pool's bucket in the
+first place — an order that fails `parseOrderDatum` (`shared/`, D22) never
+makes it into `categorizeOrders`' map at all, and neither does one whose
+`pool_nft` doesn't match any pool in our own registry. Both failures are
+inherent to attempting categorization, not a later filter step.
+
+**Why `fresh?`/`satisfiable?` are pre-filters, not the security boundary.**
+Both are re-verified independently on-chain, regardless of what the executor
+decided: `fresh?` maps to `n4_full_service`'s "validity range beats every
+deadline" (Step D) and Step B's deadline semantics; `satisfiable?` maps to
+`n4_full_service`'s "`shares_i >= min_shares_i`." The vault validator doesn't
+trust the executor's filtering — it re-derives both, every time, given D2's
+threat model (the executor is assumed compromisable). The executor's own
+check exists purely so it doesn't waste a build+verify+submit cycle on a
+batch doomed to fail anyway.
+
+**The caching problem this doesn't solve, and why nothing on-chain can.**
+`filterEligible`'s `ineligible` output — for deposits, provably permanent
+(Step C #2 below: "unsatisfiable is effectively terminal... a missed floor
+never recovers"; a past-deadline order never becomes fresh again either) —
+accumulates forever at the shared order-validator address if left alone,
+since nothing can force it off-chain. Traced this directly: `Rescue`
+explicitly can't reach it ("a castable order with a wrong `pool_nft` or
+unsatisfiable `min_out` is recoverable by its own `canceller` — Cancel is
+the owner's path, Rescue is irrelevant," `rescue.md`), and no new
+executor/treasury-authorized removal path is possible without eroding N4's
+unconditional owner-cancel guarantee (considered and rejected — see
+`v2-ideas.md`'s "Order-UTXO consolidation" entries for what *is* still on
+the table). Left unchecked, this directly costs real budget: Blockfrost's
+`utxosAt` is a paginated snapshot with no "since last check" cursor, so
+enough accumulated junk means `discoverOrders` needs multiple pages per
+tick instead of one. `excludeCached`/`ineligibleCache` mitigates the
+**executor's own reprocessing cost** (skip re-decoding + re-checking a ref
+already known dead) but does **not** reduce the Blockfrost fetch cost itself
+— that half has no available mitigation within current tooling. In-memory
+only for v1 (`Set<OutputReference>`, no persistence) — an executor restart
+just costs one tick of full reprocessing before it rebuilds, no correctness
+impact; a durable version is `v2-ideas.md`'s "Persistent ineligible-order
+cache" entry.
+
 1. Indexer polls `lucid.utxosAt(orderAddress)` (✅ same call the SDK's own
    `expired-order-monitor.ts:104` uses) or raw Blockfrost equivalent, on the
    scheduler tick. Minswap-delivered orders (asset leg) are indistinguishable from
@@ -470,7 +549,9 @@ actual availability or mechanism, which stays uniform either way.
    funded?          lp_i := order value's pool-LP amount > 0 (value-derived — Step D);
                     riding ADA covers the payout output's minUTxO (an order too fat
                     to fund its own payout is left to Cancel)
-   fresh?           deadline > now + BATCH_LATENCY_BUFFER (build+submit+settle margin)
+   fresh?           deadline > now + DEADLINE_MARGIN (same constant as Step B/C#4 —
+                    build+submit+settle buffer, was named BATCH_LATENCY_BUFFER here,
+                    consolidated 2026-07-26)
    satisfiable?     floor(value.lp * total_shares / total_lp) >= min_shares at current datum rate
    ```
    Unsatisfiable-but-valid orders are skipped, never spent-and-refunded — spending
@@ -483,43 +564,103 @@ actual availability or mechanism, which stays uniform either way.
    releases. Users wanting raw assets back instead do a Minswap withdraw-liquidity
    outside us — UI hint, not our flow.)
    Deposits can only arrive DOA two ways, both mitigable web-side:
-   (a) ~zero tolerance crossing a `RecordHarvest` — default tolerance sized above a
+   (a) ~zero tolerance crossing a `HarvestDeposit` — default tolerance sized above a
    max-accumulation harvest (Step A) fixes the default case; (b) stale quote — user
    parks the preview, signs an old `min_shares`; web must RE-QUOTE at the moment of
    signing, and can warn when the compound trigger is near firing (derivable from
    public chain data). Other users' pending deposits can never be the cause
    (rate-neutrality, Step A).
-3. **Sibling tracking (mixed deposits):** both legs are born in the same user tx, and
-   that tx visibly contains the Minswap order with `successReceiver` = us — so the
-   indexer knows at placement time that a fill is inbound. Policy: HOLD the LP-leg
-   order for its sibling; release together in one batch (one credit event, same
-   rate for both). Escape hatch: sibling killed/refunded (watch `refundReceiver`
-   payout) or hold exceeds a timeout → apply the LP leg alone. Pure executor policy —
-   nothing on-chain, can even be a UI toggle.
-4. **Batch trigger (nothing on-chain fires ApplyOrders — scheduler policy):** each
-   tick (~20–60s) over the eligible set, batch NOW if any of:
-   ```
-   count(eligible) >= K              -- amortize the tx fee across orders
-   age(oldest)     >= T_max          -- nobody waits forever behind a thin batch
-   min(deadline) - now <= margin     -- apply while the validity window still fits;
-                                        orders INSIDE the margin are excluded (Cancel
-                                        is their recovery), never rush-applied
-   ```
-   Demo tuning collapses to "fire whenever anything is eligible." Constraint that
-   survives all tuning: ONE vault spend in flight per pool — ApplyOrders shares a
-   serialized queue with EnterFarm/RecordHarvest (see failure branches D/E).
-   **Priority inside that queue (harvest-priority sequencing, D21 addendum):** when
-   the compound trigger fires, `RecordHarvest` jumps ahead — NO ApplyOrders lands
-   between trigger and harvest. Deposits-first would let just-in-time depositors buy
-   at the pre-harvest rate and skim yield earned by the accrual window's farmed
-   capital (the JIT harvest snipe); post-harvest application also pays pending
-   redeems the yield they actually sat through. Necessarily executor policy — the
-   validator can't see pending order UTxOs — but ordering is publicly auditable on
-   chain (Tier-2/N5). Full treatment in `compound-cycle.md`.
-5. Batch up to `MAX_ORDERS_PER_BATCH` — ⚠️ unmeasured against the 16KB/14M-mem/10B-step
-   limits; already a `week1-verify.md` cost-model item.
+3. ~~**Sibling tracking / hold (mixed deposits).**~~ **DEFERRED 2026-07-26,
+   `v2-ideas.md`.** Considered holding the LP leg for its asset-leg sibling to
+   release both in one batch (one credit event) — traceable with zero new
+   fields, since both legs share one `tx_hash` by construction (Step A #5/#6)
+   and a filled sibling's resulting order is identifiable by an exact datum
+   match against content already read from the origin tx. Mechanically sound,
+   but the benefit turned out to be purely cosmetic: each leg's own
+   `min_shares` floor already protects it independently of timing (same
+   rate-neutrality argument as any other pending order, Step A), so holding
+   doesn't close any real safety or fairness gap — just makes the transaction
+   history look like one event instead of two. Not worth the state-machine
+   complexity (per-order hold state, timeout tracking) for that alone at v1.
+   Legs apply independently as each becomes eligible (Step A failure
+   branches).
+
+Batch scheduling/selection — deciding *when* to act and *which* eligible
+orders make up a specific batch — isn't filtering and lives in Step D now
+(`selectBatch`), not here.
 
 ## Step D — the ApplyOrders transaction
+
+**Batch selection first — `selectBatch(eligibleOrders, poolState,
+compoundCycleState) → CategorizedOrder[] | null`.** Nothing on-chain fires
+`ApplyOrders`; this is scheduler policy, deciding both *whether* to act this
+tick and *which* of Step C's eligible orders become the `order UTxOs (1..n)`
+the recipe below spends. **Precondition, enforced by the caller, not inside
+this function: only ever called with a non-empty `eligibleOrders`.** The tick
+handler already holds `filterEligible`'s output — if it's empty, there's
+nothing to decide, so the handler simply doesn't call `selectBatch` at all
+(and by extension never touches `compoundCycleState` either — see below).
+`selectBatch` itself carries no defensive empty-check; it trusts the
+precondition, same discipline as every other stage in this pipeline trusting
+what the stage before it already guaranteed.
+
+Each 60s tick, over the eligible set for a pool, batch NOW if any of:
+```
+count(eligible) >= K                     -- amortize the tx fee across orders
+age(oldest)     >= T_max                 -- nobody waits forever behind a thin batch
+min(deadline) - now <= DEADLINE_MARGIN   -- apply while the validity window still fits;
+                                     orders INSIDE `DEADLINE_MARGIN` are excluded (Cancel
+                                     is their recovery), never rush-applied
+```
+Demo tuning collapses to "fire whenever anything is eligible." Constraint
+that survives all tuning: ONE vault spend in flight per pool — `ApplyOrders`
+shares a serialized queue with `EnterFarm` (see failure branches below).
+
+**Harvest-priority (D21 addendum, full mechanics in `compound-cycle.md`) —
+enforced via `compoundCycleState`, sourced from
+`getCompoundCycleState(poolKey)` (owned by `compound-cycle.md`, its own
+stateless-resume derivation, shared with the compound cycle's own execution
+driver, not reimplemented here).** `HarvestDeposit` isn't a separate redeemer
+competing for the vault-spend queue — it's an order-action-type absorbed
+*inside* `ApplyOrders` itself. So when the compound trigger fires, the policy
+is a hold on `ApplyOrders`, not one redeemer overtaking another: whenever
+`compoundCycleState` isn't idle, `selectBatch` returns `null` regardless of
+how urgent `K`/`T_max`/`DEADLINE_MARGIN` otherwise look — no other
+`ApplyOrders` for this pool lands until the harvest-absorbing `ApplyOrders`
+is applied. Deposits-first would let just-in-time depositors buy at the
+pre-harvest rate and skim yield earned by the accrual window's farmed
+capital (the JIT harvest snipe); post-harvest application also pays pending
+redeems the yield they actually sat through. Necessarily executor policy —
+the validator can't see pending order UTxOs — but ordering is publicly
+auditable on chain (Tier-2/N5).
+
+**`getCompoundCycleState` is genuinely new polling, not free off
+`discoverOrders`.** Of the four stateless-resume checks (MIN at executor ⇒
+mid-cycle; ADA at executor ⇒ mid-cycle; pending Minswap add-liq order ⇒
+mid-cycle; `HarvestDeposit` fill at order validator ⇒ absorb pending; nothing
+⇒ idle), only the last is covered by `discoverOrders`' existing poll of our
+own order-validator address — the other three require querying the
+executor's own wallet address and Minswap's order address, neither of which
+anything else here already reads. Given the empty-`eligibleOrders`
+short-circuit above, this cost is only paid on ticks where a pool actually
+has something batchable — not unconditionally every 60s.
+
+Batch capped at `MAX_ORDERS_PER_BATCH` — ⚠️ unmeasured against the
+16KB/14M-mem/10B-step limits; already a `week1-verify.md` cost-model item.
+**Selection order when `eligible.length` exceeds the cap: nearest deadline
+first, not placement age.** The orders closest to falling into the
+`DEADLINE_MARGIN` exclusion zone are the ones actually at risk of being
+stranded — not necessarily the oldest by placement time. A recently-placed
+order with a short custom TTL can be closer to expiring than an older one
+with a longer deadline, so sorting by age would occasionally protect the
+wrong order. `selectBatch` sorts eligible orders by deadline and takes the
+top `MAX_ORDERS_PER_BATCH`.
+
+## Step E — executor build, verify, sign, submit
+
+**`buildApplyOrdersTx(selectedOrders, vaultUtxo) → unsignedTx`** — takes
+`selectBatch`'s output and the current vault UTXO and constructs the
+transaction:
 
 ```
 inputs:   vault UTXO            redeemer ApplyOrders
@@ -532,6 +673,15 @@ mint:     share_policy: +Σ shares_i
 validity: upper bound < min(deadline_i)
 signers:  executor hot key
 ```
+
+**Necessarily sequential — one confirmed batch at a time, never pre-built in
+parallel.** If `eligible.length` exceeds `MAX_ORDERS_PER_BATCH` across
+multiple ticks, the *next* batch's `vaultUtxo` input is whatever the
+*previous* batch's own output produced — it doesn't exist yet until that
+prior `ApplyOrders` actually confirms. So this is inherently build → submit →
+await confirmation depth `K` → build the next batch against the now-current
+vault state → repeat, not multiple batches assembled ahead of time and fired
+together.
 
 Network fee: the executor pays it (it's the signer) — recouped by the 4.5%
 performance fee (D3/D4 economics). A depositor's only costs are the order's minUTxO
@@ -563,7 +713,7 @@ Vault validator checks, by invariant name (each becomes a named check + `aiken c
 | `n4_full_service` | every spent order's `payout_i` receives exactly `order_value_i − lp_i×LP + shares_i×share_asset` (shares + min-ADA + extras pass through — nothing strands, nothing leaks); `shares_i >= min_shares_i`; validity range beats every deadline |
 | mint gate | share policy: mint amount == Σ shares_i and vault UTXO spent in same tx |
 
-## Step E — executor build, verify, sign, submit
+**`buildApplyOrdersTx` in practice (SpaceBudz Lucid):**
 
 ```
 tx = lucid.newTx()
@@ -573,18 +723,57 @@ tx = lucid.newTx()
   .payToContract(vaultAddr, {Inline: newDatum}, newVaultValue)
   .payTo(payout_i, {shares_i, minUTxO_i})  for each order
   .mintAssets({share_asset: Σ shares_i}, MintApply)
-  .validTo(min(deadline_i) - MARGIN)
+  .validTo(min(deadline_i) - DEADLINE_MARGIN)
 ```
 
-**Before signing — the D19 gate, no exceptions even for self-built txs:** the
-independent verifier re-parses the raw CBOR and asserts the pre-stated intent:
-vault-out datum deltas match Σ of order inputs; every order owner paid their exact
-entitlement; mint total == Σ shares; no output pays the executor beyond change;
-fee within bound. Verifier rejects → **fail closed**: drop the tx, alert, never
-"fix and retry-sign" in the same cycle.
+**Before signing — the D19 gate, no exceptions even for self-built txs.**
+Two functions, both executor-internal (not `shared/` — neither is ever
+consumed by the web; users don't build `ApplyOrders`, only the executor
+does, N4):
 
-Then sign with the hot key, `submit()`, await confirmation depth `K` before the
-indexer marks orders applied.
+- **`computeExpectedIntent(selectedOrders, vaultUtxo) → ExpectedIntent`** —
+  `ApplyOrders`-specific, hosted here because this is where the mechanism is
+  fully designed, same as `previewShares`/`parseVaultDatum`/`encodeOrderDatum`
+  above (`redeem.md`/`compound-cycle.md` reference it rather than
+  re-deriving it, since a batch can mix deposit/redeem/harvest actions —
+  D20 addendum). **Independently re-derives** what the resulting tx should
+  look like — vault-out datum deltas, exact per-order entitlements, mint
+  total, fee bound — from the same raw inputs `buildApplyOrdersTx` used, but
+  as a genuinely separate implementation, not by calling into or reusing
+  `buildApplyOrdersTx`'s own logic. That independence is the entire point:
+  if the same code that built the tx also computed what verification should
+  expect, a compromised or buggy builder could produce a malicious tx *and*
+  a matching, self-consistent expected intent — passing its own check. D22's
+  exact words for the same trap: "a compromised adapter... verify its own
+  lies." `computeExpectedIntent` has to be blind to how `buildApplyOrdersTx`
+  arrived at its answer, only to what the answer *should* be.
+- **`verifyTx(rawCbor, expectedIntent) → boolean`** — the generic mechanism:
+  re-parse the actual built transaction's raw CBOR, compare against
+  whatever `expectedIntent` it's handed, fail closed on any mismatch (drop
+  the tx, alert, never "fix and retry-sign" in the same cycle). Documented
+  here as a *contract*, not owned by deposit.md's own concerns — it's
+  reused across every executor-signed tx type, most of which have nothing
+  to do with orders at all. `compound-cycle.md` already documents its own
+  intents independently ("Verifier intents... harvest tx; swap order;
+  add-liq order; absorb tx") with no dependency on this doc; `ApplyOrders`'
+  own intent is `computeExpectedIntent` above. Each caller owns its own
+  intent content; this entry owns only the shared re-parse-and-compare
+  mechanism both plug into.
+
+**`signWithHotKey(verifiedTx) → signedTx`** — deliberately minimal and
+isolated. This is the single highest-consequence operation in the system —
+the literal touch-point of the hot key D18's threat model centers on. Kept
+as narrow as possible on purpose: exactly one function ever touches the hot
+key, and its input type is a *verified* tx, not just any tx — `verifyTx`
+passing is a precondition, not a step this function performs itself.
+
+**`submitAndAwaitConfirmation(signedTx, confirmationDepth) → txHash`** —
+not just `.submit()`. Genuinely has to wait for confirmation depth `K`
+before the indexer marks orders applied, and this is exactly the kind of
+spot D25's lesson matters again: whatever mechanism watches for that depth
+must be a proper live-chain check, never a spend-status-blind lookup like
+`utxosByOutRef` — the same category of bug the original dust-test tooling
+had to catch and fix.
 
 **Failure branches (D/E):**
 - **User cancels mid-build** — an input order is spent before our submit → whole batch
@@ -594,10 +783,13 @@ indexer marks orders applied.
 - **Rollback** past the ApplyOrders tx → indexer state re-derives from chain tip;
   orders reappear as pending; batch rebuilds. No off-chain ledger to reconcile — the
   chain is the only state (N1's off-chain twin).
-- **A compound lands between rate-read and submit** — impossible by construction:
-  RecordHarvest also spends the vault UTXO, so whichever lands first invalidates the
-  other; the loser rebuilds at the new datum. Executor must serialize its own
-  vault-spending ops (one in flight per pool).
+- **A compound lands between rate-read and submit** — a harvest-priority hold
+  (Step D, via `getCompoundCycleState`) is meant to prevent the executor from ever building a regular
+  `ApplyOrders` batch while an absorb is pending, but the eUTXO backstop holds
+  regardless if that policy is ever violated: a harvest-absorbing `ApplyOrders`
+  also spends the vault UTXO, so whichever `ApplyOrders` call lands first
+  invalidates the other; the loser rebuilds at the new datum. Executor must
+  serialize its own vault-spending ops (one in flight per pool) either way.
 - **Blockfrost down** → batching pauses; user funds unaffected (orders cancellable
   without us — N4/N5 story holds).
 
@@ -626,11 +818,21 @@ indexer marks orders applied.
    source). ~~One open operational question remains: does Minswap's licensed batcher
    fill third-party-script-receiver orders in practice?~~ **RESOLVED 2026-07-25 —
    YES, see D24** (real mainnet probe, not just source-verified).
-6. **Web-side order status detection: poll vs. push — UNDECIDED.** After Step A's
-   submit, how does the frontend learn an order was applied (shares landed)? Plain
-   Blockfrost REST is poll-only. Two push alternatives exist but aren't evaluated
-   yet: Blockfrost Webhooks (needs a backend receiver — can't target a browser tab
-   directly; filter granularity unverified) or raw node chain-sync (different infra
-   commitment). Deliberately deferred — evaluate alongside the executor indexer's own
-   polling-vs-webhook question (separate scope, not decided here) before committing
-   either to poll.
+6. ~~**Web-side order status detection: poll vs. push — UNDECIDED.**~~ **RESOLVED
+   2026-07-28 — poll, against our own backend, not Blockfrost directly.** After Step
+   A's submit, the frontend polls a lightweight status read backed by the executor's
+   own indexer state (`discoverOrders`/`categorizeOrders`, Step C) rather than
+   Blockfrost REST or a webhook. The executor already tracks every order's status
+   every tick for its own batching purposes, so a status endpoint over that
+   already-computed state costs zero *additional* Blockfrost budget no matter how
+   many browser tabs are open — unlike each tab polling Blockfrost independently —
+   and its poll interval can be tuned as tight as UX wants (5–10s) independent of the
+   executor's own 60s discovery cadence, since it's a cheap local read, not a metered
+   call. This also settles the webhook question by elimination rather than by
+   evaluation: the project's one available webhook slot (free tier) is a
+   project-wide, not per-feature, resource — spending it here would mean deciding,
+   without evidence, that this is its best use over other candidates (e.g.
+   proof-of-reserves alerting), and a webhook would still need a backend receiver
+   plus a relay to the open tab (WebSocket/SSE), genuinely more infrastructure than
+   a poll against a service we're already running. Revisit only if live usage
+   surfaces a latency complaint the poll interval can't absorb.

@@ -61,7 +61,7 @@ batch (Step C).
    ```
    `shares_i` is **value-derived** — the share-asset amount in the order's value,
    never a datum claim (same gap-2 rule as deposits; `Redeem` carries no amount
-   param). Deadline: `now + REDEEM_TTL`, floor = `T_max + margin`
+   param). Deadline: `now + REDEEM_TTL`, floor = `T_max + DEADLINE_MARGIN`
    (+ `FARM_WITHDRAW_LATENCY` if the pool's buffer is thin — Step C; web reads
    buffer state and quotes the honest floor). No Minswap clock — one custody zone.
 4. Sign + submit.

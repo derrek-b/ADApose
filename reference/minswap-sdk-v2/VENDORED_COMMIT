@@ -1,17 +1,38 @@
 No git commit available. The repository named in package.json
-(https://github.com/minswap/minswap-sdk-v2) returned HTTP 404 on both its repo
-homepage and raw README, checked 2026-07-31 -- likely private, unlike the
-public repos backing reference/sdk and reference/wingriders-*. Vendored from
-the npm registry instead:
+(https://github.com/minswap/minswap-sdk-v2) returned HTTP 404 on both its
+repo homepage and raw README, checked 2026-07-31 -- likely private, unlike
+the public repos backing reference/sdk and reference/wingriders-*.
 
-  package  @minswap/sdk-v2
-  version  1.0.0
-  published 2026-07-28T03:18:34.402Z (per npm registry "time" metadata)
-  fetched  2026-07-31
+Vendored from the npm registry instead, via `npm pack @minswap/sdk-v2`
+(verified, not AI-fetched -- see note below):
 
-Consequence: only the published npm artifacts are vendored here (UPSTREAM_README.md,
-CHANGELOG.md, LICENSE, package.json) -- no src/ tree, and not the ./docs/*.md
-per-module reference files the README links to (confirmed absent from the
-published tarball via unpkg's file listing: only dist/, CHANGELOG.md, LICENSE,
-README.md, package.json ship). This is narrower than reference/sdk's full-repo
-mirror. See this directory's own README.md for what was and wasn't verified.
+  package      @minswap/sdk-v2
+  version      1.0.0
+  published    2026-07-28T03:18:34.402Z (per npm registry "time" metadata)
+  tarball      minswap-sdk-v2-1.0.0.tgz
+  shasum       82863f49c79c7e0bfd2b773a5e56b78e4670e4ad
+  integrity    sha512-p6T82Ng2AUpLT[...]BH+SyIzUE+dVw==
+  fetched      2026-07-31 (npm pack; re-fetch with the same command to verify)
+
+UPSTREAM_README.md / CHANGELOG.md / LICENSE / package.json /
+npm-dist/index.d.ts / npm-dist/index.js are byte-exact copies from that
+tarball's own README.md/CHANGELOG.md/LICENSE/package.json/dist/index.d.ts/
+dist/index.js. Named `npm-dist/` here, not `dist/`, because the root
+.gitignore blanket-ignores any directory literally named `dist` (meant for
+build output elsewhere in the repo) -- `dist/` would have silently vendored
+nothing, caught by `git check-ignore` before the first commit. An earlier
+pass of this vendoring (same day) went through WebFetch instead of a real
+install, and that introduced two real inaccuracies since corrected: LICENSE
+said "Copyright (c) 2022 Minswap Labs" (real text: "Minswap", no "Labs"),
+and UPSTREAM_README.md had an AI-introduced mid-line wrap not in the
+source. Lesson: for anything meant to be byte-exact, use `npm pack`/a real
+fetch, not an AI-mediated one -- WebFetch is fine for research, not for
+vendoring.
+
+Not vendored (from the tarball's own dist/ folder): dist/index.cjs,
+dist/index.js.map, dist/index.cjs.map, dist/index.d.cts -- confirmed
+redundant (CJS-vs-ESM wrapper duplicate, or a source map) of what's already
+here. The ./docs/*.md per-module reference files the README links to are
+still absent from the published tarball (confirmed via the tarball's own
+file listing above) and the source repo they'd live in isn't reachable --
+still not vendored, still a real gap.

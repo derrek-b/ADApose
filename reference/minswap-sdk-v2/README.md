@@ -7,24 +7,35 @@ offered — reach out"): **"You don't need the API key to use it... the current
 rate limit is enough for almost all use cases."** They also linked this new
 package. Decision-record entry: `docs/decisions.md` D19 addendum, 2026-07-31.
 
-**Evidence status — narrower than this project's usual vendoring.** The
-package.json `repository` field points at
-`https://github.com/minswap/minswap-sdk-v2`, which returned HTTP 404 on both
-the repo homepage and a raw README fetch (checked 2026-07-31) — likely
-private. Unlike `reference/sdk` (full git mirror, `VENDORED_COMMIT` = a real
-commit hash) or `reference/wingriders-sdk` (fetched from each repo's public
-`main` branch), this could only be vendored from the published npm artifacts:
-`UPSTREAM_README.md`, `CHANGELOG.md`, `LICENSE`, `package.json`. No `src/`
-tree, and the per-module `./docs/*.md` files the README itself links to
-(`docs/farm.md`, `docs/token.md`, etc.) are confirmed absent from the
-published tarball (checked via unpkg's file listing: only `dist/`,
-`CHANGELOG.md`, `LICENSE`, `README.md`, `package.json` actually ship). The
-compiled `dist/index.d.ts` type declarations exist and were spot-checked
-during research (config shape, `RpcProvider` interface, a portfolio farm-
-position type) but were **not** vendored verbatim — re-fetch it directly from
-npm before writing real integration code against exact signatures; treat
-anything below not pulled straight from `UPSTREAM_README.md`/`CHANGELOG.md`
-as a paraphrase, not a citation.
+**Evidence status — narrower than this project's usual vendoring, but the
+part that's here is now byte-exact.** The package.json `repository` field
+points at `https://github.com/minswap/minswap-sdk-v2`, which returned HTTP
+404 on both the repo homepage and a raw README fetch (checked 2026-07-31) —
+likely private. Unlike `reference/sdk` (full git mirror, `VENDORED_COMMIT` =
+a real commit hash) or `reference/wingriders-sdk` (fetched from each repo's
+public `main` branch), this could only be vendored from the published npm
+artifacts. First pass of this vendoring went through WebFetch and, checked
+against a real `npm pack @minswap/sdk-v2` afterward, turned out to have two
+real inaccuracies: `LICENSE` said "Copyright (c) 2022 Minswap **Labs**" (the
+real text has no "Labs"), and `UPSTREAM_README.md` had an AI-introduced
+mid-line wrap not in the source. Both fixed — see `VENDORED_COMMIT` for the
+full note and the tarball's shasum. `UPSTREAM_README.md`, `CHANGELOG.md`,
+`LICENSE`, `package.json`, `npm-dist/index.d.ts`, and `npm-dist/index.js`
+here are now byte-exact copies from that tarball's own `dist/` output, not
+reconstructions (named `npm-dist/` rather than `dist/` — the root
+`.gitignore` blanket-ignores any directory literally called `dist`, see
+`VENDORED_COMMIT`). Still no `src/` tree or the per-module `./docs/*.md`
+files the README itself links to (`docs/farm.md`, `docs/token.md`, etc.) —
+confirmed absent from the published tarball itself, not just unreachable.
+`npm-dist/index.d.ts` and `npm-dist/index.js` turned out to be worth having
+in full, not just a spot
+reference: the bundler didn't minify, so both still carry the real JSDoc
+comments and even the original per-file path markers (`// src/client/
+errors.ts`) — the closest thing to real source available without repo
+access. One good example of what that buys: a comment on the Kupo
+integer-parsing path explaining *why* — "Kupo returns unbounded integers...
+parsing those as doubles would silently round the amount and produce
+transaction bytes that do not match the chain."
 
 ## What it is
 

@@ -40,8 +40,7 @@ const quote = await sdk.aggregator.estimate({
 });
 const { cbor } = await sdk.aggregator.buildTx({
   sender: "addr1...",
-  estimate: { amount: "1000000", tokenIn: "lovelace", tokenOut:
-quote.tokenOut, slippage: 0.5 },
+  estimate: { amount: "1000000", tokenIn: "lovelace", tokenOut: quote.tokenOut, slippage: 0.5 },
   minAmountOut: quote.minAmountOut,
 });
 // sign `cbor` with your wallet, then:

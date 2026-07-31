@@ -3,5 +3,5 @@ dist/
 .env*
 !.env.example
 *.log
-validators/build/
-validators/plutus.json
+legacy/validators/build/
+legacy/validators/plutus.json

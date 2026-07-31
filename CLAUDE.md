@@ -4,66 +4,134 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-Pomona Finance — non-custodial auto-compounding yield vaults for Cardano LP positions (Minswap V2 first). **Status: pre-build.** Most source files are design-artifact skeletons or one-line stubs; `docs/decisions.md` is the authoritative design record (D1–D25; several early entries are marked SUPERSEDED — always check headers) and should be read before implementing anything, and updated (dated entries) when a design decision is made or changed. `docs/workflows/` holds the per-action implementation contracts (deposit, vault-init, compound, …) that sit between decisions.md and source — read the relevant one before coding a path. `docs/v2-ideas.md` is the parked-features ledger (not commitments) — check it before proposing or re-deriving a deferred feature.
+ADApose Labs (renamed from Pomona Finance — "Pomona Capital" was already
+taken) — Cardano DeFi automation. **Current direction (D26, 2026-07-30):** a
+fee-accrual allocation model, measured via the constant-product pool
+invariant `√k = √(reserve_A · reserve_B)` (rises only from trading fees,
+unaffected by swaps/deposits/withdrawals/price) — design docs in
+`docs/mechanism-sqrtk.md` (the invariant, vault state, share issuance),
+`docs/fee-crystallization.md` (the fee model), `docs/workflows/` (per-action
+contracts, `docs/workflows/README.md` is the index). This replaces a
+farm-emissions auto-compounding vault (Minswap V2, pooled-vault design) that
+was the product through D1–D25: real numbers showed that market too small to
+build a business on at any achievable share, not a technical failure. That
+design is fully preserved, unedited, in `legacy/` — see `legacy/README.md` —
+in case auto-compounding becomes viable again later, as an add-on or on its
+own.
 
-Use `/commit` to commit (it also checks code-coupled docs for staleness afterward) and `/update-brain` at the end of a working session (captures decisions into `docs/decisions.md`, session history into `CHANGELOG.md`). `reference/` is vendored read-only; `docs/crib_sheet.md` is a frozen interview artifact — never edit either.
+`docs/adapose-sqrtk-vault-brief.md` was the original proposal document that
+started this direction — it's owned by this project now (not a bridge
+document from elsewhere anymore), being actively phased out as each piece
+gets a proper doc per the list above. Don't treat it as current for anything
+that's since moved out of it; check `docs/workflows/README.md`'s "Relationship
+to the brief" note for what's left and why.
+
+**Status: the on-chain/off-chain architecture for the √k model is not yet
+designed.** No validator, no executor, no web app exist for it yet — don't
+assume `legacy/`'s shapes (datum layout, redeemer set, invariants) carry
+over; they were built for a materially different accounting model
+(vault-level HWM crystallization vs. batch-rate share minting) and a
+materially different custody target. What **does** exist and is real,
+tested, mainnet-verified code: `scripts/sqrtk/` — a toolkit that measures √k
+fee-accrual directly on-chain across Minswap V2 and WingRiders V2, both
+pool enumeration and a growing historical dataset (`scripts/sqrtk/sqrtk.csv`).
+Read `scripts/sqrtk/SQRTK_RUNBOOK.md` before touching anything there.
+`scripts/dispersion/` is a separate, standalone side-tool — a DefiLlama-derived
+cross-sectional read, explicitly not the gold-standard measurement; it shares
+no code or files with `scripts/sqrtk/`.
+
+`docs/decisions.md` is the authoritative design record (D1–D26+; several
+early entries are marked SUPERSEDED — always check headers, and D26 is
+itself the pivot, not a normal incremental decision) — read it before
+implementing anything, and update it (dated entries) when a design decision
+is made or changed. It was never split when `legacy/` was carved out — it's
+the one continuous history covering both the old design and why it stopped
+being the active product, and stays that way going forward. `docs/v2-ideas.md`
+is the parked-features ledger for the *current* direction (not commitments) —
+started fresh at the pivot; the prior architecture's fourteen parked ideas
+live in `legacy/docs/v2-ideas.md` instead, check both before re-deriving a
+deferred feature that sounds architecture-specific.
+
+Use `/commit` to commit (it also checks code-coupled docs for staleness
+afterward) and `/update-brain` at the end of a working session (captures
+decisions into `docs/decisions.md`, session history into `CHANGELOG.md`).
+`reference/` is vendored read-only; `docs/crib_sheet.md` is a frozen
+interview artifact — never edit either. `legacy/` is frozen by design (see
+its own README) — treat it the same way: consult, don't edit.
 
 ## Commands
 
-**Validator (`validators/`, Aiken v1.1.23, Plutus V3):**
+**`scripts/sqrtk/` (Python 3.9+, standard library only — no `pip install`):**
+the active toolkit. Full usage in `scripts/sqrtk/SQRTK_RUNBOOK.md`.
 ```bash
-cd validators
-aiken check          # typecheck + run unit tests
-aiken check -m NAME  # run tests matching NAME
-aiken build          # compile to plutus.json blueprint
+cd scripts/sqrtk
+python3 sqrtk_snapshot.py selftest   # offline, no network — run before anything else
+python3 mock_run.py                  # offline end-to-end mock of the deep-snapshot tool
+python3 mock_tick.py                 # offline end-to-end mock of the periodic collector
+python3 enumerate_minswap.py --top 60 --out pools.json      # build/extend the pool list
+python3 enumerate_wingriders.py --top 40 --out pools.json   # merges, never overwrites
+python3 sqrtk_snapshot.py measure --pools pools.json --out sqrtk.csv --days 7,14,30,60
+python3 sqrtk_tick.py --pools pools.json --out sqrtk.csv    # weekly: one current-state
+                                                              # reading per pool, appended
 ```
+Needs `scripts/sqrtk/.env` (gitignored) with `BLOCKFROST_PROJECT_ID` and
+`BLOCKFROST_BASE_URL` — mainnet, not preprod.
 
-**Executor (`executor/`, Node ESM + TypeScript):**
-```bash
-cd executor
-npm ci                    # exact lockfile install (requires .npmrc, JSR registry — committed). Use `ci`, not `install`: all deps are exact-pinned (D19) and `ci` refuses to drift the lockfile — the supply-chain guard for a hot-key service. `npm install` only when intentionally bumping a dep (review the diff before it reaches the key-holding machine).
-npm run dev               # tsx src/service/main.ts
-npm test                  # vitest (watch); npx vitest run for single pass
-npx vitest run path/to/file.test.ts   # single test file
-npm run build             # tsc
-npx tsx src/smoke-test.ts # verifies .env.local + Blockfrost + Lucid + executor wallet
-```
+`scripts/dispersion/` holds one standalone script (`defillama-dispersion-script.py`,
+run the same way: `cd scripts/dispersion && python3 defillama-dispersion-script.py`)
+— a fast DefiLlama-derived cross-sectional read, not the gold-standard
+measurement and not wired to anything in `scripts/sqrtk/`.
 
-Executor needs `executor/.env.local` (gitignored) with `BLOCKFROST_PROJECT_ID`, `BLOCKFROST_BASE_URL`, `EXECUTOR_SEED_PHRASE`, `NETWORK=preprod`. See `.env.example`.
+**Everything else (validators, executor, web) does not exist yet for the
+current direction.** For the archived app's own toolchain (Aiken, Node/TS —
+useful only if reviving `legacy/`, not for current work), see
+`legacy/README.md`.
 
-**Web (`web/`):** not scaffolded yet — planned React + Vite + Mesh SDK (CIP-30 wallet connect).
+## Critical toolchain fact (carries forward, nothing built against it yet)
 
-## Critical toolchain fact
-
-Transaction building uses **@spacebudz/lucid v0.20 (SpaceBudz Lucid), NOT Lucid Evolution** — @minswap/sdk's API is built on SpaceBudz Lucid, so the whole stack standardized on it (decision D7). It's published on JSR, hence the npm alias in package.json (`npm:@jsr/spacebudz__lucid`) and `executor/.npmrc` pointing `@jsr` at `https://npm.jsr.io`. Don't "upgrade" to lucid-evolution or lucid-cardano.
+When Cardano tx-building code gets written for the current direction, it
+should use **@spacebudz/lucid v0.20 (SpaceBudz Lucid), NOT Lucid Evolution**
+— @minswap/sdk's API is built on SpaceBudz Lucid (decision D7), and nothing
+about the pivot changes that. It's published on JSR (`npm:@jsr/spacebudz__lucid`,
+needs a `.npmrc` pointing `@jsr` at `https://npm.jsr.io`, same as `legacy/executor/`
+had). Don't reach for lucid-evolution or lucid-cardano.
 
 ## Architecture
 
-Three components around one security model:
+**Not yet designed** for the current direction — no datum shapes, no
+redeemer set, no invariant list exist yet. What's real:
 
-- **`validators/validators/vault.ak`** — on-chain. **Pooled single-vault design (D20, supersedes the per-user D1 model):** one pooled vault UTXO per pool at our script address; users hold fungible share tokens (minted on deposit, burned on redemption); exchange rate = datum-tracked total_lp ÷ total_shares (farmed_lp is the farm-custody sub-ledger, never used for pricing). Redeemer paths: ApplyOrders (executor batches user deposit/redeem *orders* against the vault; also absorbs compound-cycle harvests via a `HarvestDeposit` order action: value-derived ΔLP, treasury fee mint = 4.5% of gain, no fee ledger — confirmed as the sole compound path 2026-07-25/D24, a real mainnet probe proving the batcher fills third-party-script receivers), EnterFarm (vault LP → executor-keyed Minswap farm position via the D19 API), ExitFarm (its mirror: farm-withdrawn LP back into the vault — buffer-miss redemptions, emergency-withdraw unwind; custody move only, rate untouched), Rescue (treasury-signed, stray UTxOs only — D10). (RecordHarvest, the old alternate compound shape, is DELETED per D24 — the redeemer set is now final.) The farm layer is an executor-keyed aggregate position (Minswap allows one position per owner per pool) — custody there is executor-multisig, mitigated per D18 (MPC key, capped capital, proof-of-reserves) and bounded by the trustless emergency withdraw (D19). No deploy step: validator hash = address; publish as reference script.
-
-## NON-NEGOTIABLE invariants (D20-N) — check before touching share math, mint/burn, or redemption
-
-Pooling adopts the ERC-4626 attack class; these six conditions are the standing price, restated here so every session loads them. Each must be a named validator check with a matching test (`aiken check -m n1_` …). Any change touching them must state which it preserves. Full text in `docs/decisions.md` D20-N and the `vault.ak` header.
-
-1. **N1 Datum-truth** — exchange rate only from datum totals, never from UTXO balances.
-2. **N2 Dead shares** — fixed virtual share offset at init (kills first-depositor inflation).
-3. **N3 House-favored rounding** — shares round down on mint, assets down on redeem; pool keeps every remainder.
-4. **N4 Orders only** — users never spend the vault UTXO; deposit/redeem via owner-cancellable order UTxOs, executor-batched.
-5. **N5 Custody honesty** — shares are a redemption claim dependent on executor liveness against an executor-keyed farm; no artifact may overstate sovereignty.
-6. **N6 Thread-NFT authenticity** — a one-of-one state NFT (minted at init, carried in every vault spend) identifies THE vault UTXO; validator and share-mint policy key on the NFT, never on the address (kills counterfeit-vault share minting). Off-chain reads locate the vault by NFT too.
-
-- **`executor/`** — off-chain 24/7 service. Intended flow (D19/D20 — the compound cycle is **multi-tx**, the old atomic-batch concept is dead): `chain/indexer` watches the pooled vault + user order UTxOs → `strategies/trigger` fires when the pool's aggregate accrued rewards ≥ 2× cycle cost (~5–7 ADA; D3 restated pool-level in D20) → `operations/compound_batch` runs the cycle (D23 absorb shape): Minswap farm-API harvest tx → one MIN→ADA swap order → single-sided add-liq order with `successReceiver` = our order validator → `HarvestDeposit` absorbed in `ApplyOrders` (treasury fee mint) → EnterFarm skim; plus `ApplyOrders` batching of user deposit/redeem orders — via `adapters/minswap_v2` + `chain/tx_builder`, orchestrated by `service/scheduler`/`main`. **Every tx passes the independent CBOR verifier before the hot key signs (D19 — builder-agnostic, no exceptions).** DEX-specific construction lives behind the adapter interface (`adapters/minswap_v2`, later `adapters/wingriders`) — its own cross-consumed package, not nested under `executor/`: the web calls it directly too, for the user's own client-signed deposit/cancel txs (D22 addendum), not only the executor's compound cycle. The verifier sits OUTSIDE the adapter boundary (D22). A `shared/` workspace package (planned, D22) holds datum codecs, rate math, and config that web + executor must agree on, deriving addresses/schemas from the aiken `plutus.json` blueprint — never hand-copied. All of these are currently stubs; `smoke-test.ts` is the only working code. Deps are exact-pinned; install with `npm run setup` (= `npm ci`), never bare `npm install`.
-
-- **`reference/`** — vendored read-only material: Minswap AMM V2 spec, formula.md, farm docs, and a full @minswap/sdk snapshot (`reference/sdk`, pinned commit in `VENDORED_COMMIT`). Consult it, don't modify it. Notable facts already mined from it (D5): batcher fee is 2 ADA flat per order; imbalanced/single-sided deposits are native to the pool; `createBulkOrdersTx` supports the multi-order batch pattern first-class; Minswap V2 is constant-product only (no concentrated liquidity exists).
-
-## Target DEX status (D6, D15–D19)
-
-**Both Minswap and WingRiders are viable for auto-compounding — via executor-keyed farm positions only** (neither farm supports script owners; the custody model + invariant redesign is D18). Minswap was gated (every farm spend needs their co-sign, D6) but **resolved 2026-07-18: Minswap offers an official co-sign GraphQL API** (`reference/farm-docs/minswap-farm.md`, endpoint verified live) plus a trustless owner-only `EMERGENCY_WITHDRAW` (constructor 3) so principal is never hostage — D19 has the full analysis and a Minswap-vs-WingRiders tradeoff table. WingRiders (D16): rewards agent-pushed with no API dependency, preprod exists, but ~10× smaller TVL. SundaeSwap/Danogo are dead ends, Splash isn't live (D15 survey). A cross-DEX LP-router fallback that avoids farms entirely is D17 (field confirmed empty on Cardano). The old "one atomic compound tx" concept is dead on both DEXs — the cycle is multi-tx (D18/D19). Hard rule from D19: **never blind-sign API-built CBOR** — the executor must verify every server-built tx before signing. **Decided (D20): Phase 1 = pooled NIGHT/ADA vault on Minswap**, pitch-day demo, build window from 2026-08-17; WingRiders is the documented second venue. Evidence vendored under `reference/` (farm-onchain, wingriders-onchain, minswap-amm, dex-survey).
+- **The √k measurement mechanism** — `docs/mechanism-sqrtk.md` is the design
+  doc; `docs/decisions.md` D26 is the decision record entry citing the
+  market-size finding and the on-chain verification behind it.
+- **`scripts/`** — the working toolkit. `sqrtk_snapshot.py` does deep,
+  multi-window historical measurement (onboarding a pool/venue, or an
+  occasional deep-dive); `sqrtk_tick.py` is the periodic (weekly) collector,
+  one current-state reading per pool appended to the same growing
+  `sqrtk.csv`; `enumerate_minswap.py`/`enumerate_wingriders.py` build and
+  extend `pools.json` from live chain enumeration, never overwriting what's
+  already known. All of it mainnet-verified, not just unit-tested — see the
+  runbook for the actual evidence (100-pool clean runs, zero correctness
+  violations).
+- **`reference/`** — vendored read-only material: Minswap AMM V2 spec,
+  formula.md, farm docs, a full @minswap/sdk snapshot (`reference/sdk`,
+  pinned commit in `VENDORED_COMMIT`). Still relevant — the √k model reads
+  the same pools and will need the same DEX mechanics for whatever
+  deposit/rebalance/redeem flow it ends up with.
+- **`docs/dex-adapters.md`** — Minswap-vs-WingRiders order-construction field
+  comparison (deposit-order shapes, cancel-tx building). Written during the
+  old architecture's design but not moved to `legacy/` — the underlying DEX
+  mechanics it documents are venue facts, not old-architecture-specific, and
+  the current direction will need the same research.
 
 ## Dev loop
 
-`aiken check` → Lucid emulator → Yaci DevKit (unverified) → preprod testnet (Minswap is deployed there; both project wallets are faucet-funded) → mainnet. Unaudited = own capped capital only.
+For `scripts/`: `selftest` + all `mock_*.py` (offline, no key, no network) →
+`discover` a venue's datum shape before trusting any field mapping → `measure`
+or `tick` against real mainnet data. Nothing here touches preprod or an
+emulator — it's read-only chain measurement, not transaction building.
 
-`docs/week1-verify.md` is the checklist of unproven assumptions the design leans on — work it top-down (the architecture-deciding items first); a contradicting result means writing a superseding D-entry, not silently patching.
+For whatever gets built next (validator, executor, web): no dev loop exists
+yet because nothing exists yet to loop on. The old app's dev loop (`aiken
+check` → Lucid emulator → Yaci DevKit → preprod → mainnet) is preserved in
+`legacy/README.md` as a reference shape, not a current instruction.

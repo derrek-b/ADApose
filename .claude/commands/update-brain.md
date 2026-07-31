@@ -1,12 +1,12 @@
 # /update-brain — Capture Session Knowledge
 
-You are updating the "second brain" for the Pomona project. Your job is to review what happened in this session and propose updates to the project's knowledge base.
+You are updating the "second brain" for the ADApose project. Your job is to review what happened in this session and propose updates to the project's knowledge base.
 
 ## Scope
 
 This skill captures **session-level knowledge**: decisions made, conventions established, gotchas discovered, workflow changes, user-facing change history, and TODO items. It updates:
 
-- `CLAUDE.md` (root — pomona has no per-component CLAUDE.md files)
+- `CLAUDE.md` (root — ADApose has no per-component CLAUDE.md files)
 - `docs/decisions.md` — the D-numbered running log (currently D1–D10)
 - `CHANGELOG.md` (root, single file — components aren't separately published packages yet; revisit if they diverge)
 

@@ -43,7 +43,7 @@ D24 resolved it — not "this works in practice."
   not a naming difference, the mechanism doesn't appear to exist on their side.
 - **Reclaim-authority gap.** WingRiders' owner-reclaim path is pubkey-signature
   only (`Request.hs:90-99`); Minswap's `canceller` supports `SpendScript` too.
-  If Pomona ever wants to accept deposits from script/multisig wallets on the
+  If ADApose ever wants to accept deposits from script/multisig wallets on the
   asset leg, that's a Minswap-only capability today — WingRiders would need its
   own gate or a documented limitation.
 - **Deposit-amount declaration differs structurally**, not just in field names:

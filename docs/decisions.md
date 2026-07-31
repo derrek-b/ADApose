@@ -1162,3 +1162,126 @@ unspent outputs and is the correct primitive for spend detection.
   `29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c6` (verified via
   Cardanoscan 2026-07-25 — cross-check the raw hex length, 56 chars/28 bytes; a
   web-search prose summary of the same page silently truncated it to 55).
+
+## D26 · SUPERSEDES D20 — pivot from farm-emissions compounding to fee-accrual
+(√k) allocation — 2026-07-30
+
+**Decision:** abandon the harvest-and-compound architecture (D16/D18–D21/D23/D24
+and everything built on it) as the core product. Replace it with a fee-accrual
+allocation model — charging a performance fee on constant-product trading-fee
+accrual, measured via the pool invariant `√k = √(reserve_A · reserve_B)` per LP
+token, which rises only from trading fees and is unchanged by swaps, deposits,
+withdrawals, or price movement. Full mechanism design:
+`docs/adapose-sqrtk-vault-brief.md`; live verification tooling and evidence:
+`scripts/SQRTK_RUNBOOK.md`, `scripts/sqrtk_snapshot.py`.
+
+**Company renamed Pomona Finance → ADApose Labs** (name conflict with an
+existing entity, Pomona Capital) — administratively separate from this
+architectural decision but landing at the same time; repo-wide rename pass
+completed same day, scoped to prose/identifiers (`docs/crib_sheet.md`
+deliberately untouched, frozen per standing project rule).
+
+**Why — the market this was actually measuring turned out to be too small,
+confirmed with real numbers, not estimated:**
+- Minswap's own yield dashboard: 90,385 MIN/day chain-wide emissions
+  (~32,990,525 MIN/yr) at $0.002901 (28 Jul 2026) ≈ **$95,700/yr total** —
+  the entire chain-wide farm-emissions pot, not Pomona's share of it.
+- A 4.5% fee on 100% capture of that pot is ~$4,300/yr. Even under generous
+  assumptions (MIN at $0.24, 4× its prior ATH, plus 20% market capture) that's
+  ~$71,280/yr — barely a junior engineer's salary, and both assumptions are
+  optimistic, not baseline. Breakeven on a realistic cost base sits north of
+  $80M AUM against ~$62M total Cardano DeFi TVL at the time of the estimate.
+  **Farm emissions are not a viable revenue base at any achievable market
+  share.** This is the finding that forced the pivot — not a technical
+  blocker, an economic one.
+- Contrast: Minswap's own trading-fee revenue is independently confirmed at
+  ~$2.29M/yr on ~$11.84M TVL (DefiLlama, cross-checked against a live on-chain
+  measurement below) — over 20× the emissions pot, requires no token-price
+  appreciation bet, and scales with overall Cardano DeFi activity rather than
+  one farm-reward token's price.
+
+**Verified on-chain, not just modeled — matching this project's standing
+practice (D24) of confirming a load-bearing bet empirically before building
+on it:**
+- `sqrtk_snapshot.py measure` ran live against mainnet: 60 Minswap V2 pools +
+  20 WingRiders V2 pools, `sqrt(k)/LP` non-decreasing across every one of
+  ~300 measured windows (zero correctness-check violations — the check that
+  would catch a wrong reserve source or a missed treasury-accumulator
+  subtraction). Every reserve/treasury/LP-supply field path in the venue
+  config is cited against actual contract source
+  (`minswap-dex-v2`/`dex-v2-contracts`, file:line), not inferred from a datum
+  dump. One claim got a live empirical check beyond source citation: Minswap
+  V2's `held_LP + circulating_LP = MAX_INT64 − 10` identity, predicted from
+  source, confirmed exact against a live pool's actual numbers.
+- Real, substantial fee-APR dispersion confirmed on-chain (not
+  DefiLlama-derived, which independently checked ~50% too hot on the same
+  venue against a smaller, incomplete pool set): Minswap 30d TVL-weighted
+  yield 17.95% (median 3.95%, 90th percentile 39.19%); WingRiders 30d
+  TVL-weighted yield 10.62% (90th percentile 14.55%). The Minswap
+  TVL-weighted figure independently corroborates the $2.29M/$11.84M estimate
+  above via a completely different method (chain reads vs. DefiLlama).
+- **Persistence — does today's best pool predict next period's? — tested via
+  nested-lookback segment decomposition, rho in the 0.7–0.9 range across
+  adjacent and blended segment pairs, surviving independent reproduction and
+  bootstrap resampling.** Promising signal for the "actively rotate between
+  pools" feature specifically (distinct from the passive fee-accrual thesis
+  above, which the market-size finding alone already justifies) — but this is
+  one 60-day window in one market condition, explicitly not yet tested across
+  multiple regimes. **Standing open item, not resolved by this entry:**
+  before committing to build the rotation/rebalance machinery (crystallizing
+  high-water-mark, cross-pool re-basing, slippage/depth/payback guardrails —
+  real audit surface and a real operator-incentive risk, brief §6), run the
+  rolling multi-period version of this same measurement. If persistence
+  doesn't hold across regimes, the right v1 is a simpler passive
+  single-pool-or-small-static-set vault, not the full rotation feature — that
+  choice is deliberately left open here, not pre-committed.
+
+**Explicitly superseded — mark historical, don't try to adapt:**
+`compound-cycle.md`, `enter-exit-farm.md`, `emergency-withdraw.md` in their
+entirety; the `EnterFarm`/`ExitFarm`/`RecordHarvest` redeemers and
+`ApplyOrders`' uniform-batch-rate share math (D20-N as currently written);
+D16/D18/D19's Minswap/WingRiders farm-custody findings and D18's Tier
+framework / MPC-key / capped-capital custody-disclosure apparatus (the new
+model's own pitch, per the brief §7, is that it doesn't need this at all —
+no executor-address outputs, unilateral in-kind exit; a real improvement over
+the old design, which — per this session's own custody-diligence pass —
+had no owner-signed exit path whatsoever); `proof-of-reserves.md`'s specific
+C1–C6 checks (need a full rewrite — no farm-custody zone left to reconcile).
+
+**Survives, carries forward as pattern or working code:**
+- D19's core signing discipline — independent verifier re-parses raw CBOR
+  against pre-stated intent before any hot-key signature, builder-agnostic,
+  no exceptions even for self-built txs. Reapply directly to the new tx
+  shapes (crystallize/rebalance/redeem).
+- D22's adapter boundary (DEX-specific mechanics behind a shared
+  web+executor interface) — same shape, new methods.
+- The Blockfrost discovery/polling architecture and its budget reasoning.
+- The N-invariant-plus-matching-test discipline as a *practice* — hold
+  whatever the √k model's real non-negotiables turn out to be (HWM
+  monotonicity, no-output-to-executor, in-kind redemption) to the same bar
+  D20-N set, with new N-numbers once the new invariant set is designed.
+- CIP-68 share-token pattern.
+- Proof-of-reserves as a concept (ship a public monitor, don't assert trust)
+  even though the specific checks are being rewritten.
+- `sqrtk_snapshot.py` and its enumeration tooling — not just a pattern, real
+  working infrastructure already built and mainnet-verified, a genuine head
+  start unlike everything else in this list.
+
+**Not yet decided — open, not silently assumed either way:**
+whether deposits/redemptions still ride an owner-cancellable order-queue
+pattern (N4's shape) or interact with the vault more directly under the new
+accounting model; the actual datum/redeemer shapes for the √k vault; whether
+v1 ships the rotation feature or the simpler passive version (gated on the
+persistence-across-regimes question above); v1 venue scope (lean: Minswap
+only for the demo, matching this project's own established phased-rollout
+practice — D20's Phase-1-then-expand precedent, not a new call).
+
+**Context beyond the economics, worth recording:** the pivot also fits the
+mandate of the investment program this build sits inside of (Orion fund,
+DraperU × Cardano Genesis) more directly — a capital-allocation-efficiency
+product that helps liquidity find its best-yielding venue is a better match
+for "grow Cardano DeFi liquidity" than a tool that only skims one farm's
+existing emissions. Standing risk, shared by the old and new architecture
+equally and not resolved by this decision either way: the whole thesis
+depends on Cardano network/DeFi activity actually growing from its current
+low point.

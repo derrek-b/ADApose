@@ -1,0 +1,16 @@
+name = "adapose/vault"
+version = "0.1.0"
+compiler = "v1.1.23"
+plutus = "v3"
+license = "MIT"
+description = "ADApose Labs — vault validator (architecture in transition, see docs/decisions.md D26)"
+
+[repository]
+user = "derrek-b"
+project = "adapose"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "v2"
+source = "github"

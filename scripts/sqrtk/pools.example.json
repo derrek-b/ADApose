@@ -1,0 +1,32 @@
+[
+  {
+    "_comment": "WingRiders V2 CPMM. script_hash is VERIFIED: read off 119 live pool addresses on 2026-07-29 by bech32-decoding the UTxO addresses returned by api.mainnet.wingriders.com/graphql. 20 of those 119 sit at the enterprise (0x71) address form, which is why the script matches on payment credential and never on the full address. nft and lp_asset are per-pool and must be filled in from the pool you are measuring.",
+    "label": "WR2-ADA-XXX",
+    "venue": "wingriders-v2",
+    "script_hash": "af97793b8702f381976cec83e303e9ce17781458c73c4bb16fe02b83",
+    "nft": "TODO_policy_plus_hexname_of_the_pool_identity_NFT",
+    "lp_asset": "6fdc63a1d71dc2c65502b79baae7fb543185702b12c3c5fb639ed737TODO_hex_asset_name",
+    "asset_a": "lovelace",
+    "asset_b": "TODO_policy_plus_hexname"
+  },
+  {
+    "_comment": "WingRiders V2 stableswap. NOT constant-product: sqrt(k) does not apply and the monotonicity check will not mean what it means elsewhere. Listed only so the hash is recorded. Do not measure these with this script. Note the LP policy 6fdc63a1... is shared with the CPMM family at V2, so the V1 trick of separating families by LP policy does not carry forward.",
+    "label": "WR2-STABLE-DO-NOT-MEASURE",
+    "venue": "wingriders-v2",
+    "script_hash": "946ae228430f2fc64aa8b3acb910ee27e9b3e47aa8f925fac27834a1",
+    "nft": "TODO",
+    "lp_asset": "TODO",
+    "asset_a": "TODO",
+    "asset_b": "TODO"
+  },
+  {
+    "_comment": "Minswap V2. script_hash and the datum reserve paths are NOT verified by us -- run `discover` against a live pool and map them before trusting any output. Minswap V2 holds the unissued LP in the pool UTxO, so circulating LP = max_lp_supply - held; confirm max_lp_supply against the contract, it is currently assumed to be maxBound Int64.",
+    "label": "MIN2-ADA-MIN",
+    "venue": "minswap-v2",
+    "script_hash": "TODO_payment_credential_of_the_v2_pool_address",
+    "nft": "TODO",
+    "lp_asset": "TODO",
+    "asset_a": "lovelace",
+    "asset_b": "TODO"
+  }
+]

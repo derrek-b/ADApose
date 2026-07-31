@@ -5,6 +5,55 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### Vault custody + v1 product re-scoped — individual vaults, aggregator-first (2026-07-31)
+
+- **Individual (per-user) vault custody chosen over pooled for the √k model
+  (D27)** — no farm layer forces commingling here the way it did for the old
+  design, and user-defined strategy parameters (a "Lend & Earn"-style
+  composed strategy is the worked example) need per-user state a pooled
+  vault can't represent. Reference architecture: FUM (`~/code/fum_project`),
+  a separate local project — individual position vaults, strategy-as-
+  parameters, executor capped by a destination-whitelist validator
+  registry, same owner/executor asymmetry as this project's own D2. √k the
+  invariant survives custody-agnostic; the pooled-only share-mint/burn math
+  (`mechanism-sqrtk.md`'s "Share issuance" section) does not.
+- **v1 target re-scoped to a cross-DEX LP aggregator + one-click zap-in
+  ("DexHunter for liquidity positions"), ahead of any managed-strategy
+  automation (D28).** Pool discovery/comparison across DEXs (TVL, volume,
+  √k-based fee APR) with direct zap-in execution into an individual vault,
+  no strategy running yet. Re-checked the competitive landscape this
+  session: DexHunter itself confirmed still swap-only; MuesliSwap's
+  "Liquidity Hub" (Catalyst F14, previously recorded as rejected/empty-space
+  at D17) claims a working MVP of a near-identical concept — Catalyst
+  funding not approved, live status unverified, flagged for a harder check.
+- **Pooled vaults parked, not abandoned** — a distinct future service for
+  cost-amortization on small positions, `docs/v2-ideas.md`, with a
+  shared-library-not-shared-validator guardrail already agreed for if/when
+  it's built.
+- `docs/mechanism-sqrtk.md`, `docs/fee-crystallization.md`, and
+  `docs/workflows/rebalance.md` each got a dated note flagging what's now
+  stale for the individual-vault model (the crystallization apparatus
+  simplifies to withdrawal/rebalance-only; the mid-flight multi-holder
+  question in rebalance.md dissolves) — the actual rewrite pass is still
+  pending.
+
+### Minswap farm co-sign confirmed key-optional; `@minswap/sdk-v2` vendored (2026-07-31)
+
+- Minswap team confirmed (Discord) the farm co-sign GraphQL API needs no
+  provisioned API key — current rate limit covers almost all use cases. Closes
+  the "provision key-API access" prerequisite D19/week1-verify.md's dust-cycle
+  list assumed. Does not reopen D26 (the pivot was a market-size finding, not a
+  technical one) — recorded for a possible future legacy revival.
+- `reference/farm-docs/minswap-farm.md` §4 got a dated correction note for the
+  above, directly in the vendored doc (original text kept, not erased) — the
+  source itself updated its answer, so the vendored copy was updated to
+  match; not the same thing as editing frozen/historical material.
+- New `reference/minswap-sdk-v2/` — vendors `@minswap/sdk-v2` (npm v1.0.0), the
+  Lucid-free successor to `@minswap/sdk` (`reference/sdk`, D7) with a typed
+  `sdk.farm` module. npm-only vendoring (no reachable git source); full caveats
+  and evidence tags in that directory's own README. Full detail: D19 addendum,
+  `docs/decisions.md`.
+
 ### D26 pivot — legacy archive, √k design docs, scripts/ toolkit reorg (2026-07-29/30)
 
 - Old auto-compounding app (validators/, executor/, its docs/workflows/) moved

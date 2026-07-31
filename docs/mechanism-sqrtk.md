@@ -13,6 +13,18 @@ claim as "this is the plan," not "this is built" — the brief's own Status line
 called the economics "still being worked," and that's still true of the mechanism
 details below, not just the numbers.
 
+**Update (2026-07-31, D27 in `docs/decisions.md`):** the vault topology this
+doc assumed — a shared vault per pool with fungible shares — is superseded.
+The current direction uses one vault per user (individual custody), not
+pooled. The invariant itself (this doc's core: the `√k` measurement, its
+non-decreasing property, what the vault reads on-chain) survives unchanged
+and custody-agnostic — that part isn't stale. The **"Share issuance"**
+section below specifically is pooled-only bookkeeping (mint/burn math for
+many holders sharing one position) that doesn't apply once there's exactly
+one owner with nothing to mint against. This doc needs a rewrite pass to
+make that split explicit; not yet done — read D27 before trusting the Share
+issuance section as current for the vault actually being built.
+
 ## The invariant
 
 For a constant-product pool with reserves `x` and `y`:

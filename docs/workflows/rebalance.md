@@ -8,6 +8,21 @@ Extracted from `docs/adapose-sqrtk-vault-brief.md` §6 (2026-07-30) — see
 
 **Status: design, not decision.** Same caveat as the two docs above.
 
+**Update (2026-07-31, D27 in `docs/decisions.md`):** the core protocol below
+(crystallize → burn → swap → zap in → re-base) and its guardrails (cooldown,
+per-swap slippage bound, pool whitelist, payback rule, operator share
+lockup) aren't pooled-specific and still apply to an individual vault
+rebalancing itself — a single owner still needs protecting from a strategy
+that churns its own position and bleeds value on the round trip. The
+**"Mid-flight state"** section below is different: it's entirely about
+*other users'* deposits/withdrawals arriving while a rebalance is in
+flight, which is a pooled-vault-shaped concern (concurrent second parties)
+that doesn't exist when the owner rebalancing is the only owner — Open
+design point 2 dissolves for the individual-vault case. This doc needs a
+rewrite pass to make that split explicit; not yet done — read D27 before
+trusting the Mid-flight section as a live open question for the vault
+actually being built.
+
 **Why this workflow exists at all:** `√k` units are pool-specific
 (`docs/mechanism-sqrtk.md`) — `√(NIGHT·USDCx)` and `√(USDM·ADA)` don't compare.
 So moving the vault's capital between pools has to *close* the accrual

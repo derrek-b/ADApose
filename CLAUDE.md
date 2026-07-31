@@ -19,6 +19,21 @@ design is fully preserved, unedited, in `legacy/` — see `legacy/README.md` —
 in case auto-compounding becomes viable again later, as an add-on or on its
 own.
 
+**Narrowed further (D27/D28, 2026-07-31):** vault custody is per-user
+(individual, one UTXO per owner), not pooled — no farm layer forces
+commingling in this model the way it did for the old one, and user-defined
+strategy parameters (a "Lend & Earn"-style composed strategy is the worked
+example) need per-user state a pooled/fungible-share vault can't represent.
+The √k invariant survives as a measurement primitive, but is one building
+block in a growing strategy library now, not the whole product —
+`mechanism-sqrtk.md`'s "share issuance" math specifically is pooled-only and
+doesn't apply to the vault being built (flagged in that doc directly).
+**v1 target is a cross-DEX LP aggregator + one-click zap-in** ("DexHunter
+for liquidity positions") — pool discovery/comparison across DEXs (TVL,
+volume, √k-based fee APR) with direct zap-in execution, before any
+managed-strategy automation ships. Pooled vaults aren't abandoned, just
+deferred to a distinct later service — `docs/v2-ideas.md`.
+
 `docs/adapose-sqrtk-vault-brief.md` was the original proposal document that
 started this direction — it's owned by this project now (not a bridge
 document from elsewhere anymore), being actively phased out as each piece
@@ -55,9 +70,21 @@ deferred feature that sounds architecture-specific.
 Use `/commit` to commit (it also checks code-coupled docs for staleness
 afterward) and `/update-brain` at the end of a working session (captures
 decisions into `docs/decisions.md`, session history into `CHANGELOG.md`).
-`reference/` is vendored read-only; `docs/crib_sheet.md` is a frozen
-interview artifact — never edit either. `legacy/` is frozen by design (see
-its own README) — treat it the same way: consult, don't edit.
+`docs/crib_sheet.md` is a frozen interview artifact and `legacy/` is a frozen
+historical snapshot (see its own README) — neither has a live upstream to
+track, so neither gets edited in place; if `legacy/` is ever revived that's
+an active decision requiring its own fresh verification pass (chain state,
+dependency versions, and ecosystem facts will have moved on since it was
+archived), not an update-in-place. `reference/` is different: it vendors
+copies of *live* external sources (Minswap/WingRiders code, docs, SDKs) that
+keep existing and changing out in the world, and gets read for the current
+direction's own work too, not just conditionally on a revival. Never
+hand-edit vendored content to insert our own opinions or fixes — but when
+the actual upstream source updates its own claim, curate that update into
+the vendored copy with a clear, dated citation (matching
+`docs/adapose-sqrtk-vault-brief.md`'s own inline "Correction (dated)"
+convention) rather than leaving a known-stale claim in place. Re-vendoring a
+new version/commit is expected, not a rule violation.
 
 ## Commands
 
@@ -103,9 +130,15 @@ had). Don't reach for lucid-evolution or lucid-cardano.
 **Not yet designed** for the current direction — no datum shapes, no
 redeemer set, no invariant list exist yet. What's real:
 
+- **Vault custody: individual (per-user), not pooled** — `docs/decisions.md`
+  D27 is the decision record entry (reference architecture, reasoning, what
+  simplifies as a result). No datum/redeemer shapes exist yet.
 - **The √k measurement mechanism** — `docs/mechanism-sqrtk.md` is the design
-  doc; `docs/decisions.md` D26 is the decision record entry citing the
-  market-size finding and the on-chain verification behind it.
+  doc (now one building block/strategy among several, not the whole
+  product — see D27); `docs/decisions.md` D26 is the market-size finding and
+  on-chain verification behind using it at all; D28 is the v1 product
+  sequencing decision (cross-DEX aggregator + zap-in first, ahead of any
+  strategy automation).
 - **`scripts/`** — the working toolkit. `sqrtk_snapshot.py` does deep,
   multi-window historical measurement (onboarding a pool/venue, or an
   occasional deep-dive); `sqrtk_tick.py` is the periodic (weekly) collector,

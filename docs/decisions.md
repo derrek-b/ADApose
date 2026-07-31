@@ -628,6 +628,74 @@ landed — N1); and the co-sign requirement on normal spends is Minswap protecti
 their reserves, not gating our principal. ⚠️ their statement + design inference
 (`reference/farm-docs/minswap-farm.md` §2); dust-cycle item (b) observes it.
 
+### D19 addendum · Co-sign API confirmed key-optional; `@minswap/sdk-v2` released — 2026-07-31
+
+Minswap team, Discord (2026-07-31), on the key-API access D19 said they'd help
+provision: **"You don't need the API key to use it... the current rate limit
+is enough for almost all use cases."** The farm co-sign GraphQL API
+(`reference/farm-docs/minswap-farm.md`) is usable with zero provisioning —
+no credential request, no approval step, no dependency on Minswap granting
+anything. `minswap-farm.md` §4 now carries a dated correction note recording
+this directly (added 2026-07-31, original 2026-07-18 text kept intact above
+it, same inline-correction convention `docs/adapose-sqrtk-vault-brief.md`
+already uses) — the vendored doc's own source (Minswap) updated its answer,
+so the vendored copy was updated to match. Distinct from "editing" a frozen
+artifact: `reference/` vendors copies of a *live* external source, and
+tracking what that source now says is curation, not an opinion of ours
+inserted into their material. (Session correction: an earlier draft of this
+entry cited D25 as precedent for leaving this untouched — wrong; D25's
+vendored-example finding never involved a stale claim needing a fix, so it
+never actually tested this question.)
+
+**Also released: `@minswap/sdk-v2`** (npm, v1.0.0, published 2026-07-28) —
+vendored at `reference/minswap-sdk-v2/` (full evidence status, caveats, and
+what wasn't verified in that directory's own README; no git source was
+reachable, only the published npm artifacts — narrower than this project's
+usual full-repo vendoring). Per its own CHANGELOG, it's the direct successor
+to `@minswap/sdk` (`reference/sdk`, D7) for transaction-building purposes:
+*"migrated from @minswap/sdk (v1) — the legacy Lucid transaction builder is
+intentionally left behind. This package is only the new API client."* Key
+facts, cited in full in the vendored README:
+
+- **Zero Lucid/chain-library dependency** in the base package (`zod` +
+  `json-bigint` only) — a different integration model: a pure API client
+  returning unsigned CBOR, caller supplies whatever signing library they
+  want. D7's SpaceBudz-Lucid reasoning was scoped to `@minswap/sdk`
+  specifically and doesn't carry over to this package.
+- **`sdk.farm`** (`list`/`getPositions`/`deposit`/`withdraw`/`harvest`/
+  `emergencyWithdraw`, same auto-branching `minswap-farm.md` already
+  documents by hand) is a typed wrapper over the SAME GraphQL backend, not a
+  new mechanism — confirmed by an internal error string surfaced during
+  vendoring naming the same backend class (`"GraphQL errors are lost without
+  this"`). If a farm-automation executor gets built (legacy revival or
+  otherwise), this is a strictly nicer integration surface than hand-rolled
+  GraphQL calls against `minswap-farm.md`'s mutations.
+- **Farm/staking WRITE actions need an `RpcProvider`** (e.g.
+  `KupoRpcProvider`, needing the optional peer `@minswap/internal-sdk`, a
+  Node-only WASM serializer) to resolve the caller's wallet UTxOs.
+  **This is a genuinely new infrastructure dependency (a running Kupo
+  instance) the original design never assumed** (D7: Blockfrost + Lucid, no
+  Kupo) — a real integration cost to weigh, not a free upgrade. Reads need
+  none of this.
+- CHANGELOG claims liquidity-order CBOR (AMM V2/V1/Stableswap) is "verified
+  byte-identical to the production `@minswap/sdk` builder ... across all
+  ops × pool versions" — Minswap's own claim, **not independently verified by
+  us** — ⚠️ UNVERIFIED per this project's own evidence-tag discipline, same
+  bar D24 held the batcher-fill bet to before relying on it.
+- Never signs or submits, same as before — the D19 universal signing gate
+  (independent CBOR verifier before any hot-key signature, builder-agnostic)
+  applies unchanged, and arguably matters more here: an SDK client is a less
+  transparent builder than a hand-inspected GraphQL mutation.
+
+**Does not reopen D26.** The pivot away from farm-emissions compounding was a
+market-size finding (the entire chain-wide MIN emissions pot too small to
+build a business on at any achievable share) — unrelated to API-key friction
+or SDK ergonomics. This entry exists so that if auto-compounding is
+revisited later (`legacy/README.md`'s own stated possibility), the
+integration picture on record is current: cheaper to build (no key
+provisioning step, a typed farm client available) but with one new
+dependency to weigh (Kupo, if the `RpcProvider` path is used).
+
 ## D20 · SUPERSEDES D1 — pooled single-vault design (share-based) — 2026-07-18
 
 **Decision:** abandon per-user vault UTXOs. One pooled vault per pool at our script
@@ -1285,3 +1353,174 @@ existing emissions. Standing risk, shared by the old and new architecture
 equally and not resolved by this decision either way: the whole thesis
 depends on Cardano network/DeFi activity actually growing from its current
 low point.
+
+## D27 · Individual (per-user) vault custody chosen for the √k model — 2026-07-31
+
+**Decision:** the √k model uses one vault UTXO per user (owner-only custody),
+not a pooled single-vault-per-pool design with fungible shares. First real
+working-out of vault topology for the current direction — D26 replaced the
+product (farm emissions → fee accrual), not yet the custody model.
+
+- **D20's pooling argument doesn't carry over, and shouldn't be assumed to.**
+  D1 (per-user) was superseded by D20 (pooled) specifically because the old
+  farm-emissions architecture necessarily commingled assets at the farm layer
+  regardless of vault topology (Minswap: one farm position per owner per
+  pool) — per-user vaults there bought no real custody benefit while paying
+  full accounting complexity, "shares in an expensive costume." That forcing
+  function doesn't exist here: no farm layer, nothing commingling assets by
+  construction. Re-examined fresh this session rather than inherited.
+- **Reference architecture: FUM** (`~/code/fum_project`, a separate local
+  project — a live EVM concentrated-liquidity strategy-vault platform, not
+  vendored into this repo). Its `PositionVault` is one vault per user; a
+  separate strategy layer (`StrategyBase.sol`/`BabyStepsStrategy.sol`) stores
+  only *parameters* keyed per-vault (target range, reinvestment
+  trigger/ratio, risk limits) with a template system (locked presets, fully
+  overridable, or anywhere between via a per-parameter customization
+  bitmask); and an owner/executor split where the executor's power is capped
+  by a destination-whitelist validator registry regardless of which strategy
+  is attached (`PositionVault.sol`'s `onlyAuthorized` gate routes every
+  DeFi-specific call through `IVaultFactory.validateX`). That asymmetry —
+  owner path unrestricted, executor path constrained — is D2's "owner path
+  proves identity, executor path constrains everything," independently
+  arrived at on a different chain/VM. It's also already the shape
+  `mechanism-sqrtk.md`'s non-custodial constraints draft was reaching for (no
+  output to the executor's address, whitelisted-destination-only) — just not
+  yet generalized past one specific LP interaction to an arbitrary strategy's
+  approved action set. Individual vaults + that generalization is the target
+  shape, not a new invention.
+- **Cardano-native wins over FUM's own EVM implementation** (worth having
+  ready for pitch/diligence, not just an implementation detail): no
+  nonce-contention problem — FUM needs an entire HD-derived-per-vault-signer
+  scheme (`docs/decisions/per-vault-signer.md` in that repo) purely to give
+  each vault an independent nonce space; eUTxO gives this for free, since
+  every vault is already its own independent UTXO. No factory-deployment
+  step either — FUM's `VaultFactory` exists because EVM requires deploying a
+  new contract instance per user; on Cardano every vault is just a new UTXO
+  at the validator's existing address, no deploy step (matches D7: "no
+  deploy step, validator hash = address").
+- **Structurally required, not just preferred, once strategy parameterization
+  enters the picture.** User-defined risk parameters (target LTV, fee-sweep
+  %, trigger conditions and thresholds — the "Lend & Earn" example: deposit
+  collateral, borrow against it, deploy the borrowed asset into a Minswap LP,
+  user sets the LTV, the sweep-to-loan-repayment %, its trigger, and the
+  full-unwind LTV) are inherently per-user state. A pooled vault can't
+  represent divergent per-user policy without either forcing one policy on
+  every holder or re-inventing per-user sub-accounting inside the pool — the
+  exact trap D20 already diagnosed once, for a different reason this time.
+- **Major simplification to `fee-crystallization.md`'s design, beyond the
+  custody-model win.** That doc's entire "shared HWM, crystallize on every
+  supply change" apparatus exists only to solve a fungible-share fairness
+  problem — its own words: "the contract cannot know any holder's cost
+  basis... a holder who mints above the HWM would get billed for growth that
+  happened before they arrived." One owner per vault means no such holder
+  exists to protect. Crystallization only needs to happen at the two moments
+  value actually crosses a boundary — **withdrawal** and **cross-pool
+  rebalance** — not on every deposit. A same-pool top-up can blend cost basis
+  (new capital enters at the current rate; old capital's unrealized gain
+  keeps accruing against its own HWM) without forcing a fee-realization
+  event, because — per that doc's own proof — deferring costs nothing ("√k
+  per share never falls within a pool... there's no drawdown a lower HWM
+  would have let them net against"). This dissolves that doc's open points 2
+  (the dust vector) and 3 (contention cost of crystallizing on every change)
+  outright — both existed only to defend a multi-holder fairness problem that
+  no longer exists. Echoes D14's old settle-at-withdraw-only answer for the
+  (also single-owner-per-vault) farm-emissions v1, before D20 pooled things
+  and had to invent the on-every-change workaround.
+  **`mechanism-sqrtk.md`/`fee-crystallization.md` need a rewrite pass to
+  reflect this — not done in this entry, flagged as follow-up work.**
+- **√k the invariant survives custody-agnostic; √k's share-mint/burn math was
+  always pooled-only and dies here** — worth being explicit rather than
+  treating "the √k model" as one blob (a distinction surfaced writing this
+  entry, 2026-07-31). The raw measurement
+  (`√(reserve_A·reserve_B)/LP_total`, rises only from fees, immune to
+  price/deposits/withdrawals) answers the same question regardless of how
+  many owners hold a claim against the LP position — "how much of this
+  growth is actual fee accrual" — and stays exactly as useful: it's the
+  entire basis of D28's comparison product (zero connection to any vault
+  existing at all), and it remains the right fee-accrual measurement for the
+  LP *leg* of any future strategy, individual or pooled. What doesn't carry
+  over is `mechanism-sqrtk.md`'s "Share issuance" section — the mint/burn
+  exchange-rate math exists only to solve many-holders-sharing-one-position
+  fairly; with exactly one owner there's nothing to mint against. That piece
+  is genuinely pooled-only and goes dead for individual vaults (stays
+  relevant only for the deferred pooled-vault idea, `docs/v2-ideas.md`). A
+  passive vault with no other mechanics has no customer (see D28) — the
+  simple single-pool fee-accrual strategy (using the invariant, not share
+  math) survives as one entry in a strategy library, not the product itself.
+  Strategies composing a √k-measured LP position with other primitives
+  (lending/borrowing — Lend & Earn above) are also in scope. First strategy
+  to actually ship is not yet decided.
+- **Pooled vaults are not abandoned** — deferred as a distinct, later,
+  opt-in service specifically for cost-amortization on small positions. See
+  `docs/v2-ideas.md`.
+
+## D28 · v1 starting product — cross-DEX LP aggregator + one-click zap-in — 2026-07-31
+
+**Decision:** ship a cross-DEX liquidity-position discovery/comparison tool
+first — "DexHunter for liquidity positions" — before any managed-strategy
+automation. A user names a pair, the app shows every pool for it across DEXs
+(TVL, volume, fee APR via √k), and zaps in directly from the app into an
+individual vault (D27) with no strategy running on it yet.
+
+- **Why this sequencing, not strategy-automation first.** Reuses what's
+  already built almost directly: `scripts/sqrtk/`'s enumeration
+  (`enumerate_minswap.py`/`enumerate_wingriders.py`) and measurement *is* the
+  cross-DEX APR data layer this needs, and it's a stronger number than
+  DefiLlama's `apyBase` — already mainnet-verified, already known to catch
+  what DefiLlama gets wrong. `docs/dex-adapters.md`'s Minswap-vs-WingRiders
+  deposit-order field comparison is real head start on the zap-in
+  construction. Ships real standalone value with zero strategy-design risk —
+  no custody-model debate, no fee-crystallization design needed for this
+  layer, sidestepping the trap surfaced this same session: a vault that just
+  sits passively earning fee accrual with no other mechanics has no customer
+  willing to pay an ongoing fee for it (nothing to justify it over
+  self-managing directly on a DEX's own site). Builds the exact foundation
+  every future strategy needs anyway — multi-DEX order construction + the
+  individual-vault custody primitive (D27) — exercised first with no
+  automation trusted to run on it yet.
+- **Staged monetization, not designed in detail here:** comparison +
+  one-click execution as the distribution wedge (free, or a small execution
+  fee); managed strategies (Lend & Earn and whatever the library grows to)
+  as the actual revenue layer once real usage exists on the same custody
+  rails.
+- **Competitive landscape, re-checked this session** (updates D17's
+  addendum's evidence, doesn't overturn D17's underlying finding): D17
+  (2026-07-17) surveyed this exact concept as a *fallback* product and found
+  the space empty but three Catalyst proposals for it rejected by voters,
+  including MuesliSwap's own "Liquidity Hub" (F14). Re-checked 2026-07-31,
+  two weeks later, since this is now the actual v1 rather than a
+  hypothetical:
+  - **DexHunter itself: confirmed, directly, still swap-aggregation only** —
+    no LP/liquidity-provision feature anywhere in their own onboarding docs
+    (checked 2026-07-31).
+  - **MuesliSwap's "Liquidity Hub" is further along than D17 recorded, and
+    its current live status is ⚠️ UNVERIFIED.** Their own Fund 14 Catalyst
+    close-out claims "an MVP demonstrating a working Liquidity DEX
+    Aggregator that finds the best pools for LPs across several Cardano
+    DEXs ranked by APR, fees, volume and a self-defined risk metric,
+    allowing users to select a pool and provide liquidity through a single
+    transaction" — close to exactly this product. Catalyst funding was
+    **not approved** (matches D17), which doesn't mean nothing shipped —
+    proposals often ship a demo for the close-out regardless of the funding
+    vote. Could not confirm whether it's live/usable today or was
+    hackathon/demo-grade and never launched broadly (their site is a JS SPA,
+    not readable by the fetch tooling used 2026-07-31). **Needs a harder
+    check — actually try their interface, check GitHub/Discord activity —
+    before finalizing competitive positioning.** Splash and SundaeSwap were
+    not checked for anything similar.
+  - Doesn't change the sequencing decision even if MuesliSwap's thing turns
+    out to be live: the √k-accuracy edge and the managed-strategy upsell
+    path above are real differentiators a Catalyst-MVP-grade competitor
+    likely doesn't have — but D17's own "why did others fail" question is no
+    longer hypothetical and should have a ready answer.
+- **Does not depend on D26's still-open rotation-vs-persistence question, and
+  isn't gated on it.** That question is about whether an active cross-pool
+  rotation *feature* is worth building; this product doesn't rotate anything
+  automatically — it's user-initiated entry, comparison-driven. Building
+  proceeds regardless of that question's answer: the residency starts in
+  under two weeks (no time to wait on a check that can't even run until
+  after it starts); the thesis is a forward bet on Cardano DeFi TVL growth,
+  not something to validate before acting; and — the point that actually
+  reframes D26's open item — the strategy space this session surfaced is
+  much bigger than "rotate vs. don't," most of it (Lend & Earn-style composed
+  strategies) unrelated to cross-pool persistence at all.

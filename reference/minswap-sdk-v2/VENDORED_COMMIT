@@ -1,0 +1,17 @@
+No git commit available. The repository named in package.json
+(https://github.com/minswap/minswap-sdk-v2) returned HTTP 404 on both its repo
+homepage and raw README, checked 2026-07-31 -- likely private, unlike the
+public repos backing reference/sdk and reference/wingriders-*. Vendored from
+the npm registry instead:
+
+  package  @minswap/sdk-v2
+  version  1.0.0
+  published 2026-07-28T03:18:34.402Z (per npm registry "time" metadata)
+  fetched  2026-07-31
+
+Consequence: only the published npm artifacts are vendored here (UPSTREAM_README.md,
+CHANGELOG.md, LICENSE, package.json) -- no src/ tree, and not the ./docs/*.md
+per-module reference files the README links to (confirmed absent from the
+published tarball via unpkg's file listing: only dist/, CHANGELOG.md, LICENSE,
+README.md, package.json ship). This is narrower than reference/sdk's full-repo
+mirror. See this directory's own README.md for what was and wasn't verified.

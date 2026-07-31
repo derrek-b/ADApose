@@ -162,3 +162,5 @@ Confirmed: **script/contract addresses cannot own a farm position today.** Owner
 ## 4. Composability — welcome
 
 Yes — you're welcome to build automated compounding on top of Minswap farms, and the flow above **is** the official integration path: use the farm GraphQL mutations to get Minswap-co-signed transactions, add the owner signature, and submit. The emergency-withdraw redeemer guarantees users can always exit unilaterally. Reach out and we'll help provision key-API access and answer anything else as you spec it out.
+
+**Update (2026-07-31), Minswap team via Discord:** the "provision key-API access" line above is superseded — an API key is not required. "You don't need the API key to use it. ... You can leave the API key cuz the current rate limit is enough for almost all use cases." They also pointed at a new package, `@minswap/sdk-v2` (npm), which wraps this same GraphQL API behind a typed `sdk.farm` client (`deposit`/`withdraw`/`harvest`/`emergencyWithdraw`) — vendored at `reference/minswap-sdk-v2/`. Full record: `docs/decisions.md` D19 addendum, 2026-07-31.

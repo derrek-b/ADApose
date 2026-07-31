@@ -11,6 +11,15 @@ flows aren't decided yet). `docs/adapose-sqrtk-vault-brief.md` was the
 original proposal document; it's been mostly extracted into the docs above
 and is being phased out, not the thing to read first anymore.
 
+**Narrowed further (D27/D28, 2026-07-31):** vault custody is per-user
+(individual), not pooled — see `docs/decisions.md` D27. v1 target is a
+cross-DEX LP aggregator + one-click zap-in ("DexHunter for liquidity
+positions") — pool discovery/comparison across DEXs with direct zap-in
+execution — ahead of any managed-strategy automation (D28). √k stays the
+fee-accrual measurement primitive but is one building block in a growing
+strategy library now, not the whole product. Pooled vaults aren't
+abandoned, just deferred — `docs/v2-ideas.md`.
+
 This replaces a farm-emissions auto-compounding vault (Minswap V2, pooled
 single-vault design) that was the product through decisions D1–D25. The
 pivot is economic, not technical: a real-numbers market-size check found

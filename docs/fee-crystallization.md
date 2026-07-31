@@ -9,6 +9,20 @@ Extracted from `docs/adapose-sqrtk-vault-brief.md` §5 (2026-07-30) — see
 **Status: design, not decision.** Same caveat as `mechanism-sqrtk.md` — nothing
 here is a validator yet.
 
+**Update (2026-07-31, D27 in `docs/decisions.md`):** this doc's entire
+"crystallize on every supply change" design exists to solve a fairness
+problem specific to pooled, fungible-share vaults (multiple holders, no
+per-user cost basis — see "The problem this solves" below). The current
+direction uses individual (one-owner) vaults instead, where that fairness
+problem doesn't exist: crystallization only needs to happen at withdrawal or
+cross-pool rebalance, not on every deposit, and a same-pool top-up can blend
+cost basis instead of forcing a fee-realization event. This dissolves Open
+design points 2 (the dust vector) and 3 (contention cost) below outright —
+both existed only to defend a multi-holder fairness problem that no longer
+applies. This doc needs a rewrite pass to reflect the simpler individual-vault
+model; not yet done — read D27 before trusting the mechanism below as
+current for the vault actually being built.
+
 ## The problem this solves
 
 Shares are fungible CIP-68 tokens and therefore transferable, so the contract

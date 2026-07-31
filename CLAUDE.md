@@ -67,6 +67,8 @@ the active toolkit. Full usage in `scripts/sqrtk/SQRTK_RUNBOOK.md`.
 cd scripts/sqrtk
 python3 sqrtk_snapshot.py selftest   # offline, no network — run before anything else
 python3 mock_run.py                  # offline end-to-end mock of the deep-snapshot tool
+python3 mock_minswap.py              # offline mock: Minswap-specific datum/NFT paths
+python3 mock_enumerate.py            # offline dry-run of enumerate_minswap.py
 python3 mock_tick.py                 # offline end-to-end mock of the periodic collector
 python3 enumerate_minswap.py --top 60 --out pools.json      # build/extend the pool list
 python3 enumerate_wingriders.py --top 40 --out pools.json   # merges, never overwrites

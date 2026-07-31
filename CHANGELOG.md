@@ -5,6 +5,28 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### D26 pivot — legacy archive, √k design docs, scripts/ toolkit reorg (2026-07-29/30)
+
+- Old auto-compounding app (validators/, executor/, its docs/workflows/) moved
+  intact to legacy/, frozen — see legacy/README.md. Supersedes D20; full
+  rationale in docs/decisions.md D26. Repo-wide Pomona → ADApose rename
+  landed same day, scoped to prose/identifiers.
+- docs/adapose-sqrtk-vault-brief.md decomposed into living design docs —
+  mechanism-sqrtk.md, fee-crystallization.md, workflows/{rebalance,deposit,
+  redeem}.md, each edited in place going forward. Brief shrunk ~410→~140
+  lines, kept only for still-open decision-track material (§1, §8).
+- scripts/ split into scripts/sqrtk/ (the interoperating measurement
+  toolkit) and scripts/dispersion/ (standalone DefiLlama script, no shared
+  code).
+- New command sqrtk_tick.py — periodic (weekly) collector, appends one
+  current-state reading per pool to the same sqrtk.csv the deep-snapshot
+  tool writes to. New CSV columns: track_asset (safe cross-tool pool-identity
+  join key) and source (deep/tick).
+- measure now refuses unverified venues outright — zero API calls spent,
+  instead of computing and flagging.
+- enumerate_*.py now merge into pools.json instead of overwriting — full
+  WingRiders set (40 pools, up from a top-20 cut).
+
 ### Deposit web-side function decomposition + WingRiders adapter evidence (2026-07-26)
 
 - **`deposit.md` Steps A (place order) and B (order lifecycle/cancel) now have

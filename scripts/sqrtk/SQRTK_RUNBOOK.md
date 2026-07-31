@@ -76,13 +76,15 @@ into chat, tickets, or logs.
 
 ## 4. Step 0 — verify the script before pointing it at anything
 
-Three checks run with **no network and no key**. Run all of them; they take
+Five checks run with **no network and no key**. Run all of them; they take
 under a couple seconds total and they are the difference between "it
 executes" and "the arithmetic is right".
 
 ```bash
 python3 sqrtk_snapshot.py selftest
 python3 mock_run.py
+python3 mock_minswap.py
+python3 mock_enumerate.py
 python3 mock_tick.py
 ```
 
@@ -100,6 +102,19 @@ that fake chain and asserts the reported APR comes back at 7.572% on every
 window. It also re-runs with deliberately broken venue rules to confirm the
 guard rails fire and the process exits non-zero.
 
+`mock_minswap.py` covers what the WingRiders-shaped fixture in `mock_run.py`
+cannot: reserves and circulating LP read from the pool datum rather than the
+Value, the `max_lp_supply − held == total_liquidity` cross-check, and the
+venue-wide-NFT problem — Minswap V2 shares one NFT across every pool, so
+history must be paged by the pool's own LP asset, never by that shared token;
+a regression back to NFT-paging fails loudly here.
+
+`mock_enumerate.py` is an offline dry-run of `enumerate_minswap.py` against a
+fabricated address listing built to hit every case the enumerator has to
+handle: reverse-ordered pairs, a pair only recoverable from the datum, a
+stray airdropped token alongside a real pair, duplicate asset-name labels,
+a decoy output with no MSP NFT, and a listing longer than `--top`.
+
 `mock_tick.py` covers the periodic collector (section 8): diffing against a
 prior row instead of re-deriving history, skipping an unverified venue with
 zero network calls, still *writing* a decreasing reading while flagging it as
@@ -108,7 +123,7 @@ recent to say anything new. It reuses `mock_run.py`'s own fixture for the
 bootstrap case rather than duplicating it, since bootstrapping literally is
 `measure`'s lookback sweep, unmodified.
 
-All three must print a clean pass before you spend a single API call.
+All five must print a clean pass before you spend a single API call.
 
 ---
 

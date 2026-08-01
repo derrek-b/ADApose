@@ -5,6 +5,48 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### `web/` scaffolded — Next.js foundation for the aggregator (2026-07-31)
+
+- **D29: frontend foundation decided and built.** Next.js (App Router,
+  TypeScript), Tailwind + shadcn/ui, TanStack Query/Table + Server
+  Components — deliberately not Redux (no cross-cutting client state yet)
+  and not Bootstrap (FUM's stack, not copied wholesale). Reads
+  `scripts/sqrtk/pools.json`/`sqrtk.csv` directly for now; no API/DB layer,
+  specifically to conserve Blockfrost usage while that stays the only data
+  source. `QueryClientProvider` wired into the root layout for real, not
+  left an inert dependency; shadcn's `table` component added alongside
+  TanStack Table. Both `npm run build` and `npm run dev` verified clean.
+- **npm audit surfaced 3 high-severity findings** (old `postcss`/`sharp`
+  nested inside Next 16.2.12's own dependency tree) — npm's suggested fix
+  would downgrade Next to 9.3.3, rejected as nonsensical. Accepted as-is:
+  no untrusted CSS/source-map input, no user-uploaded images. Revisit
+  trigger recorded (D29 addendum): only if the app ever renders
+  third-party-sourced image content through `next/image`.
+- **`create-next-app` generated its own `AGENTS.md`/`CLAUDE.md` pair** in
+  `web/` flagging that the installed Next.js version may have API changes
+  past an LLM's training data — kept as-is, not overwritten.
+
+### Vendored `@minswap/sdk-v2` upgraded to byte-exact via `npm pack` (2026-07-31)
+
+- The first vendoring pass went through WebFetch and, checked against a
+  real `npm pack @minswap/sdk-v2` afterward, had introduced two real
+  inaccuracies: `LICENSE` said "Minswap **Labs**" (real text has no "Labs"),
+  and `UPSTREAM_README.md` had an AI-introduced mid-line wrap. Both fixed.
+  Added `npm-dist/index.d.ts` and `npm-dist/index.js` (named `npm-dist/`,
+  not `dist/`, to dodge the root `.gitignore`'s blanket `dist/` rule) — real,
+  unminified, JSDoc-annotated output, the closest thing to source available
+  without repo access. Lesson banked: WebFetch is fine for research, not for
+  anything meant to be byte-exact.
+
+### `/commit` skill restructured — doc pass now runs before any commit
+
+- Previously: commit code, then check doc staleness against the commit that
+  just landed, then a second trailing doc commit. Now: stage, run the
+  staleness check and doc pass against what's staged (not yet committed),
+  and only then decide commit structure — single, per-scope with docs
+  folded in, or a wholly separate docs commit — with the full diff (code +
+  docs) in view before anything is committed.
+
 ### Vault custody + v1 product re-scoped — individual vaults, aggregator-first (2026-07-31)
 
 - **Individual (per-user) vault custody chosen over pooled for the √k model

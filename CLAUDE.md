@@ -139,6 +139,11 @@ redeemer set, no invariant list exist yet. What's real:
   on-chain verification behind using it at all; D28 is the v1 product
   sequencing decision (cross-DEX aggregator + zap-in first, ahead of any
   strategy automation).
+- **`web/`** — scaffolded (D29): Next.js (App Router, TypeScript), Tailwind +
+  shadcn/ui, TanStack Query/Table + Server Components (no Redux). Reads
+  `scripts/sqrtk/pools.json`/`sqrtk.csv` directly — no API/DB layer yet, to
+  conserve Blockfrost usage. First slice per D28 (pool discovery/comparison)
+  not yet built — only the verified scaffold exists so far.
 - **`scripts/`** — the working toolkit. `sqrtk_snapshot.py` does deep,
   multi-window historical measurement (onboarding a pool/venue, or an
   occasional deep-dive); `sqrtk_tick.py` is the periodic (weekly) collector,

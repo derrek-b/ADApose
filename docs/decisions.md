@@ -1524,3 +1524,118 @@ individual vault (D27) with no strategy running on it yet.
   reframes D26's open item — the strategy space this session surfaced is
   much bigger than "rotate vs. don't," most of it (Lend & Earn-style composed
   strategies) unrelated to cross-pool persistence at all.
+
+## D29 · Frontend foundation for D28's aggregator — Next.js, no API/DB layer yet — 2026-07-31
+
+**Decision:** `web/` is Next.js (App Router, TypeScript, React) — Tailwind +
+shadcn/ui over Bootstrap, TanStack Query/Table + Server Components over
+Redux, for the current read-only scope. Data source for now: Server
+Components read `scripts/sqrtk/pools.json`/`sqrtk.csv` directly — no API or
+database layer yet. Scoped narrowly to D28's first slice: getting pool data
+(TVL, volume, √k-based fee APR) on screen, no wallet connection, no position
+creation/zap-in.
+
+- **Why Next over a plain Vite SPA:** D28's product is discovery-first — a
+  comparison tool wants to be *found* (organic search for pool/APR queries
+  is real distribution for the staged-monetization plan D28 lays out), which
+  Server Components give for free and a client-only SPA doesn't. It also
+  removes a problem that would otherwise need solving today: there is no
+  live API yet (`scripts/sqrtk/` is a Python CLI producing local files), and
+  Server Components can read that data directly server-side — a Vite SPA
+  would need a separate backend stood up just to have something to fetch
+  before a single row could render.
+- **Reference architecture: FUM** (`~/code/fum_project`, D27's own reference)
+  already runs Next 15 + React 19 for a directly comparable DeFi frontend —
+  real, working precedent for the general app shape, not a cold start. Its
+  EVM-specific dependencies (`ethers`, `viem`, `@web3modal/ethereum`,
+  `@uniswap/v3-sdk`) don't transfer at all — Cardano's wallet/tx-building
+  layer is a separate, later concern (see the flagged cost below).
+- **Deliberately NOT copying the rest of FUM's stack.** FUM's Redux
+  (`@reduxjs/toolkit`/`react-redux`) earns its keep there because it tracks
+  many live vaults, real-time updates, multi-step tx flows — genuinely
+  complex cross-cutting client state. A read-only pool-comparison table
+  isn't that: Server Components fetching server-side, plus plain
+  `useState`/URL search params for sort/filter UI state, covers this scope
+  with no state-management library at all. Revisit if/when the app grows
+  into real position/vault tracking — not preemptively. Bootstrap/
+  react-bootstrap swapped for Tailwind + shadcn/ui (current ecosystem
+  default, owned component code, ships an actual data-table recipe on
+  TanStack Table — the right tool for sortable/filterable TVL/volume/APR
+  columns regardless of styling choice).
+- **No API/DB layer yet, deliberately — conserves Blockfrost usage, not just
+  build-order convenience.** `scripts/sqrtk/`'s own cost discipline
+  (rate-limited, request-budgeted per `SQRTK_RUNBOOK.md` §7) is why the
+  frontend reads the already-fetched `pools.json`/`sqrtk.csv` snapshots
+  rather than triggering fresh on-chain reads of its own — a real API/DB
+  layer is coming "sooner rather than later" (the user's own words) once the
+  product needs live server-side refresh on its own schedule, not deferred
+  out of uncertainty.
+
+### D29 addendum · WASM + ESM-only friction, flagged for the wallet/tx-building layer, not solved now
+
+Surfaced discussing the frontend foundation, before any wallet/tx-building
+code exists — recorded now specifically so it isn't rediscovered as a
+surprise once that layer gets built. `@spacebudz/lucid` and Mesh SDK both
+wrap a Rust-compiled-to-WebAssembly Cardano serialization library (CBOR
+encoding, address/Plutus-data encoding, ed25519/blake2b) — unavoidable for
+any serious Cardano tx-building library, not a Lucid-specific flaw. Two
+distinct frictions stack:
+
+- **WASM itself needs explicit bundler support** — a `.wasm` import isn't a
+  plain JS module (load as bytes, then instantiate via the `WebAssembly`
+  API); webpack/Turbopack/Vite all need explicit config to handle it, or the
+  build fails or silently breaks only at the runtime call site.
+- **Next-specific, and worse than a plain SPA:** the same component can
+  compile for two environments (Node server during SSR, browser during
+  hydration) — the bundler must get WASM handling right for both, or the
+  code must be walled off from the server entirely. Wallet interaction
+  (`window.cardano`, CIP-30) is browser-only regardless, so any
+  Lucid/Mesh-touching component needs `"use client"`, usually combined with
+  `next/dynamic(..., { ssr: false })` or a dynamic `import()` inside
+  `useEffect`, so the WASM path never reaches the server bundle at all.
+  Webpack's classic fix is `experiments: { asyncWebAssembly: true }` in
+  `next.config.js` — re-verify the exact current API against whatever Next
+  version is actually in use when this is built, not assumed from this note
+  (Next's bundler config surface shifts across versions; Turbopack is a
+  different code path from webpack for this).
+- **ESM-only compounds it, not just adds to it** — no CommonJS build means
+  `require()` can't load it at all; a mixed CJS/ESM dependency tree can
+  break outright, not just warn. Already on record, not repeated in full
+  here: `reference/sdk/README.md`'s "ES Module Requirement" section
+  (`"type": "module"`, Node's `--experimental-wasm-modules` flag, the
+  `.npmrc` JSR registry pointer — SpaceBudz Lucid is on JSR, not plain npm),
+  and `CLAUDE.md`'s toolchain note, both predating this entry and both about
+  the library's own general Node requirements, not this specific
+  Next.js/SSR interaction.
+- **Not blocking anything today** — wallet/tx-building is out of scope for
+  D28's current slice. A real half-day of deliberate setup when that layer
+  starts, not a `npm install` and move on; worth knowing now rather than
+  discovering mid-implementation.
+
+### D29 addendum · npm audit findings on scaffold — accepted as-is, revisit trigger named — 2026-07-31
+
+Scaffolding `web/` (`create-next-app`, Next 16.2.12) surfaced 3 high-severity
+`npm audit` findings: an old `postcss` (8.4.31) and an old `sharp` (0.34.5),
+both nested **inside** Next's own dependency tree
+(`node_modules/next/node_modules/...`), not fixable by bumping our own
+top-level `package.json` deps. **npm's own suggested fix
+(`npm audit fix --force`) would downgrade Next itself to 9.3.3** — a
+six-year regression that undoes D29 entirely — rejected outright as
+nonsensical, not evaluated further. No newer stable Next release exists yet
+to pick up a patched nested version (16.3.0 is preview/canary only as of
+2026-07-31).
+
+**Decision: accept as-is, not a force-fix.** Real exposure is narrow for
+both: the PostCSS advisories (XSS via unescaped `</style>` output, arbitrary
+file read via a crafted `sourceMappingURL` in CSS comments) require
+processing untrusted CSS/source-map input, which this app never does — we
+write our own CSS/Tailwind, full stop. The `sharp`/libvips CVEs matter for
+`next/image`'s server-side image processing — no user-uploaded images
+anywhere in this product (confirmed explicitly this session), which closes
+the main vector. **Revisit trigger, narrower than "never": if the app ever
+renders third-party-sourced images through `next/image`** (e.g. dynamically
+fetched token/pool logo icons from an external registry, not bundled/vetted
+by us) — not user-uploaded, but not fully trusted content either, and still
+routed through the vulnerable `sharp` path. Not relevant to the current
+pool-comparison MVP scope; worth a real look whenever dynamic icon
+rendering actually gets added, not before.

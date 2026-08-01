@@ -41,7 +41,7 @@ V2 and WingRiders V2. DraperU x Cardano Genesis Hacker House application
 | `legacy/` | The archived auto-compounding vault design — validator, executor scaffold, per-action workflow docs. Frozen, not maintained; see `legacy/README.md` before assuming anything in it is current |
 | `reference/` | Vendored Minswap + WingRiders material: AMM V2 spec, formula.md, farm docs, SDK snapshots — still relevant, the current direction reads the same pools |
 | `docs/` | Design decisions (`decisions.md`, one continuous history — never split when `legacy/` was carved out), the √k brief, parked ideas for the current direction |
-| `web/` | Not started. Was planned as React + Vite + Mesh SDK for the old app; nothing built for either direction |
+| `web/` | Scaffolded (D29): Next.js + Tailwind/shadcn + TanStack, reading `scripts/sqrtk/` data directly, no API/DB layer yet. First slice: pool discovery/comparison, no wallet/positions yet (D28) — no actual pages built yet beyond the scaffold |
 
 Nothing named `validators/` or `executor/` exists at the repo root right now
 — both moved to `legacy/` whole. If you're looking for them expecting the

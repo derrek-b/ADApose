@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1785600594196,
+      "tag": "0000_useful_lockheed",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1785602104772,
+      "tag": "0001_right_dazzler",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785602548705,
+      "tag": "0002_special_dorian_gray",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785610026282,
+      "tag": "0003_complex_gamora",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785611978415,
+      "tag": "0004_worried_lifeguard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785630879405,
+      "tag": "0005_loose_wong",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785631580233,
+      "tag": "0006_drop_measurements_swap_fks",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,14 +1,18 @@
 # ADApose web
 
 Next.js (App Router, TypeScript, React), Tailwind + shadcn/ui, TanStack
-Query/Table + Server Components (no Redux, no API/DB layer yet — Server
-Components read `scripts/sqrtk/pools.json`/`sqrtk.csv` directly, on purpose,
-to conserve Blockfrost usage while that's still the only data source). Full
-reasoning: `docs/decisions.md` D29.
+Query/Table + Server Components (no Redux). A Server Component queries a
+real Postgres DB (Supabase, via Drizzle — `src/db/schema.ts`) directly —
+`current_readings` is what the pool comparison page actually reads, kept
+fresh by a pipeline that spans two directories: Python measurement in
+`automation/sqrtk/`, Node ingest/refresh in this project's own `scripts/`
+(`web/scripts/` from the repo root) — rather than by reading local files at
+request time. Full reasoning: `docs/decisions.md` D29.
 
 First slice, per D28: a cross-DEX LP pool discovery/comparison view (TVL,
-volume, √k-based fee APR) — no wallet connection, no position creation, no
-zap-in yet. Reference architecture for the general app shape: FUM
+volume, √k-based fee APR) is built and reading real data (Minswap-only so
+far). No wallet connection, no position creation, no zap-in yet. Reference
+architecture for the general app shape: FUM
 (`~/code/fum_project`, a separate local project, already runs Next for a
 directly comparable DeFi frontend) — its EVM-specific dependencies don't
 transfer; Cardano's wallet/tx-building layer (Mesh SDK or `@spacebudz/lucid`,

@@ -1,14 +1,21 @@
-import { Button } from "@/components/ui/button";
+import { PoolTable } from "@/components/pool-table";
+import { getPoolRows } from "@/lib/pool-data-adapter";
 
-export default function Home() {
+// current_readings only changes when the refresh scripts run (manually, for
+// now) -- re-query on every request rather than let Next statically cache
+// a build-time snapshot.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const pools = await getPoolRows();
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-4 p-16">
-      <h1 className="text-2xl font-semibold tracking-tight">ADApose</h1>
-      <p className="max-w-md text-center text-muted-foreground">
-        Cross-DEX liquidity position discovery — pool comparison table goes
-        here (D28/D29, docs/decisions.md).
-      </p>
-      <Button>shadcn/ui wired up</Button>
+    <main className="flex flex-1 flex-col p-6">
+      <div className="mx-auto w-full max-w-5xl">
+        <h2 className="mb-4 text-center text-xl font-semibold tracking-tight">
+          Pools
+        </h2>
+        <PoolTable pools={pools} />
+      </div>
     </main>
   );
 }

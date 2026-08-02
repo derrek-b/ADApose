@@ -1,0 +1,1 @@
+ALTER TABLE "measurements" ADD CONSTRAINT "measurements_unique_reading" UNIQUE("venue","track_asset","from_ts","to_ts","source");

@@ -1,0 +1,362 @@
+{
+  "id": "8c3261f1-e2c4-42b9-9710-d989462c8b17",
+  "prevId": "3c83a043-d21d-4035-ae0f-ee127f21325b",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.current_readings": {
+      "name": "current_readings",
+      "schema": "",
+      "columns": {
+        "venue": {
+          "name": "venue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track_asset": {
+          "name": "track_asset",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pool_label": {
+          "name": "pool_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tvl_ada": {
+          "name": "tvl_ada",
+          "type": "numeric(24, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_24h_ada": {
+          "name": "volume_24h_ada",
+          "type": "numeric(24, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_7d_ada": {
+          "name": "volume_7d_ada",
+          "type": "numeric(24, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "volume_30d_ada": {
+          "name": "volume_30d_ada",
+          "type": "numeric(24, 6)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fee_apr_7d_pct": {
+          "name": "fee_apr_7d_pct",
+          "type": "numeric(20, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fee_apr_7d_actual_days": {
+          "name": "fee_apr_7d_actual_days",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fee_apr_7d_measurement_id": {
+          "name": "fee_apr_7d_measurement_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fee_apr_30d_pct": {
+          "name": "fee_apr_30d_pct",
+          "type": "numeric(20, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fee_apr_30d_actual_days": {
+          "name": "fee_apr_30d_actual_days",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fee_apr_30d_measurement_id": {
+          "name": "fee_apr_30d_measurement_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "venue_verified": {
+          "name": "venue_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "current_readings_fee_apr_7d_measurement_id_measurements_id_fk": {
+          "name": "current_readings_fee_apr_7d_measurement_id_measurements_id_fk",
+          "tableFrom": "current_readings",
+          "tableTo": "measurements",
+          "columnsFrom": [
+            "fee_apr_7d_measurement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "current_readings_fee_apr_30d_measurement_id_measurements_id_fk": {
+          "name": "current_readings_fee_apr_30d_measurement_id_measurements_id_fk",
+          "tableFrom": "current_readings",
+          "tableTo": "measurements",
+          "columnsFrom": [
+            "fee_apr_30d_measurement_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "current_readings_venue_track_asset_pk": {
+          "name": "current_readings_venue_track_asset_pk",
+          "columns": [
+            "venue",
+            "track_asset"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.measurements": {
+      "name": "measurements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "venue": {
+          "name": "venue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track_asset": {
+          "name": "track_asset",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pool_label": {
+          "name": "pool_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_ts": {
+          "name": "from_ts",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_ts": {
+          "name": "to_ts",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "days": {
+          "name": "days",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sqrtk_per_lp_from": {
+          "name": "sqrtk_per_lp_from",
+          "type": "numeric(48, 18)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sqrtk_per_lp_to": {
+          "name": "sqrtk_per_lp_to",
+          "type": "numeric(48, 18)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "growth_pct": {
+          "name": "growth_pct",
+          "type": "numeric(20, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fee_apr_pct": {
+          "name": "fee_apr_pct",
+          "type": "numeric(20, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserve_a_to": {
+          "name": "reserve_a_to",
+          "type": "numeric(20, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserve_b_to": {
+          "name": "reserve_b_to",
+          "type": "numeric(20, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lp_supply_to": {
+          "name": "lp_supply_to",
+          "type": "numeric(20, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_verified": {
+          "name": "venue_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "measurements_unique_reading": {
+          "name": "measurements_unique_reading",
+          "nullsNotDistinct": false,
+          "columns": [
+            "venue",
+            "track_asset",
+            "from_ts",
+            "to_ts",
+            "source"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pools": {
+      "name": "pools",
+      "schema": "",
+      "columns": {
+        "venue": {
+          "name": "venue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track_asset": {
+          "name": "track_asset",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lp_asset": {
+          "name": "lp_asset",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "script_hash": {
+          "name": "script_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nft": {
+          "name": "nft",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "asset_a": {
+          "name": "asset_a",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "asset_b": {
+          "name": "asset_b",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "discovered_at": {
+          "name": "discovered_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "pools_venue_track_asset_pk": {
+          "name": "pools_venue_track_asset_pk",
+          "columns": [
+            "venue",
+            "track_asset"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

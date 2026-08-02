@@ -1,0 +1,135 @@
+{
+  "id": "75b44ee4-09cb-4daa-89b4-6ff06bfff941",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.measurements": {
+      "name": "measurements",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "venue": {
+          "name": "venue",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "track_asset": {
+          "name": "track_asset",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pool_label": {
+          "name": "pool_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "from_ts": {
+          "name": "from_ts",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_ts": {
+          "name": "to_ts",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "days": {
+          "name": "days",
+          "type": "numeric(10, 3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sqrtk_per_lp_from": {
+          "name": "sqrtk_per_lp_from",
+          "type": "numeric(48, 18)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sqrtk_per_lp_to": {
+          "name": "sqrtk_per_lp_to",
+          "type": "numeric(48, 18)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "growth_pct": {
+          "name": "growth_pct",
+          "type": "numeric(20, 6)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fee_apr_pct": {
+          "name": "fee_apr_pct",
+          "type": "numeric(20, 4)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserve_a_to": {
+          "name": "reserve_a_to",
+          "type": "numeric(20, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserve_b_to": {
+          "name": "reserve_b_to",
+          "type": "numeric(20, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "lp_supply_to": {
+          "name": "lp_supply_to",
+          "type": "numeric(20, 0)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "venue_verified": {
+          "name": "venue_verified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

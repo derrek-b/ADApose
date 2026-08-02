@@ -67,3 +67,42 @@ reasoning one level down.
 **Revisit trigger:** once an actual pooled-cost-uneconomical strategy is
 built and shipped for individual vaults (Lend & Earn or similar) and real
 usage data shows small positions being priced out of it solo.
+
+## Run our own Cardano node instead of Blockfrost/Koios
+
+**Idea:** stand up our own `cardano-node` plus an indexer layer on top
+(db-sync + Postgres, or Kupo/Ogmios) — always-on infrastructure giving
+direct queryable access to raw chain state, replacing third-party APIs
+entirely for `automation/sqrtk/`'s own measurement needs. No rate limit, no
+per-request cost, no dependence on Blockfrost's/Koios's continued pricing
+or uptime.
+
+**Deferred, not abandoned** — genuine always-on ops burden (multi-TB fast
+storage that only grows, continuous uptime, node-version/hard-fork
+maintenance) is a different operational posture than today's run-when-needed
+CLI toolkit, and a long initial sync besides. Not a drop-in swap either: the
+existing reserve/treasury/LP-supply extraction logic is built against
+Blockfrost's REST shape and would need real rework against db-sync's schema
+or Kupo's API. Matches the same discipline that deferred Redux (D29) and the
+API/DB layer (D29) — don't build infrastructure ahead of proven need.
+
+**Why it's more than a one-off idea, though:** `docs/decisions.md` D29's own
+addendum already flags that the eventual wallet/tx-building layer
+(`@minswap/sdk-v2`'s `KupoRpcProvider`) will need a running Kupo instance for
+a completely unrelated reason (resolving a wallet's own UTxOs into CBOR). If
+that need materializes, the same node+indexer could serve both consumers —
+the measurement toolkit and the future RpcProvider — rather than standing up
+two separate pieces of infrastructure at different times.
+
+**Known cost:** `cardano-node` + (`db-sync`+Postgres, or Kupo/Ogmios) as a
+minimum stack; a dedicated always-on host with substantial fast storage;
+ongoing maintenance across hard-fork/protocol-era upgrades; a real
+integration effort porting the venue-specific field-path logic in
+`sqrtk_core.py`'s `Venue` configs to whatever query shape the chosen
+indexer offers, not just pointing the existing Blockfrost client elsewhere.
+
+**Revisit trigger:** Blockfrost's rate limit or cost actually becomes a
+binding constraint in practice (not just a design-phase consideration) — the
+lower-commitment interim step being a paid Blockfrost/Koios tier first — or
+the wallet/tx-building layer's own Kupo need materializes, making shared
+infrastructure worth building once for both purposes.

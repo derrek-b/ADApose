@@ -105,8 +105,8 @@ wants to avoid a Lucid dependency.
 
 Useful only if/when the D26-archived farm-emissions design (`legacy/`) is
 revisited, per `legacy/README.md`'s own stated possibility — not relevant to
-the current √k direction's own on-chain reading needs. `scripts/sqrtk/`
+the current √k direction's own on-chain reading needs. `automation/sqrtk/`
 deliberately reads raw chain state rather than trusting a hosted API's
 computed values, for the same reason DefiLlama's `apyBase` was rejected as a
-trust source (`docs/mechanism-sqrtk.md`, `scripts/sqrtk/SQRTK_RUNBOOK.md`
+trust source (`docs/mechanism-sqrtk.md`, `automation/sqrtk/SQRTK_RUNBOOK.md`
 §1) — nothing here changes that.

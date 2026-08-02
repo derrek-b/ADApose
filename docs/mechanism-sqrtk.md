@@ -114,7 +114,7 @@ directly. **Reading the wrong one makes `√k per LP` appear to move for reasons
 that aren't fees, silently breaking the correctness check above.** This is the
 single most important per-venue detail (brief §9 Q4b) and needs confirming per
 venue before that venue's pools are trusted, the same discipline
-`scripts/sqrtk/SQRTK_RUNBOOK.md` section 6 already applies to its own venue
+`automation/sqrtk/SQRTK_RUNBOOK.md` section 6 already applies to its own venue
 `Venue.verified` flags — this mechanism needs the on-chain equivalent of that
 same discovery step.
 
@@ -228,9 +228,9 @@ Outside liquidity cancels exactly. *(Continues from the pre-doubling state in
 2. **Circulating LP supply on Minswap (brief Q2).** Minswap holds unissued LP
    inside the pool UTxO, so the LP asset's total supply is not "LP in
    circulation." Does the pool datum carry the figure needed, matching how
-   `scripts/sqrtk/sqrtk_snapshot.py`'s `pool_holds_remainder` venue rule already
+   `automation/sqrtk/sqrtk_core.py`'s `pool_holds_remainder` venue rule already
    reads this off-chain (`max_lp_supply − held`) — can a validator do the same,
-   and is `max_lp_supply` confirmable the same way `scripts/sqrtk/`'s own
+   and is `max_lp_supply` confirmable the same way `automation/sqrtk/`'s own
    `Venue` config confirmed it on-chain?
 3. **Per-venue reserve source, extending the ⚠️ flagged above (brief Q4b).**
    Datum reserves vs. UTxO value, confirmed per venue before that venue's pools

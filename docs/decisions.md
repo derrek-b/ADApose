@@ -1639,3 +1639,99 @@ by us) — not user-uploaded, but not fully trusted content either, and still
 routed through the vulnerable `sharp` path. Not relevant to the current
 pool-comparison MVP scope; worth a real look whenever dynamic icon
 rendering actually gets added, not before.
+
+## D30 · Point-in-time snapshot redesign — `pool_snapshots` replaces comparison-pair `measurements` — 2026-08-02
+
+**Problem found, not hypothetical — worked through with the user by walking an
+ongoing daily-tick scenario:** the `measurements` table stored one row per
+`(from_ts, to_ts)` comparison window, with `growth_pct`/`fee_apr_pct` baked in
+at write time. Display picked whichever existing row's own window was
+"closest to nominal 7/30 days." Under an ongoing **daily**-tick cadence, every
+new tick produces a ~1-day-window row, which never falls inside a
+"closest to 7/30" tolerance band — displayed APR would freeze forever after
+the one-time deep-sweep and never update again.
+
+**Fix: stop storing comparison-pairs, store bare point-in-time snapshots.**
+New `pool_snapshots` table (venue, track_asset, ts, sqrtk_per_lp, reserves,
+lp_supply — no growth/APR field). Any window's APR is computed **fresh at
+display time** by picking two snapshots and computing growth on the spot
+(`web/scripts/refresh-minswap-readings.mts`). `measurements` table dropped
+entirely; `current_readings`'s FK columns swapped from a single
+`feeApr{7,30}dMeasurementId` to `from`/`to` snapshot-ID pairs.
+
+**Python toolkit rewritten to match, not just the schema** — the old
+functions would have kept producing the now-wrong comparison-row shape, so
+reuse wasn't an option. `sqrtk_snapshot.py`/`sqrtk_tick.py`/
+`sqrtk_tick_db.py`/`mock_run.py`/`mock_tick.py` deleted outright. Replaced
+by: `sqrtk_core.py` (shared chain-reading primitives, extracted and
+diff-verified byte-identical against the original), `discover_venue_datum.py`
+(venue onboarding, unchanged behavior), `fetch_snapshots.py` (the recurring
+pipeline — one `collect_snapshots()` function now serves new-pool backfill,
+routine tick, and one-time historical gap-fill by varying only the `targets`
+list), `migrate_snapshots_gap.py` (one-time), `selftest.py`, and
+renamed/rewritten mocks (`mock_wingriders.py`, `mock_fetch_db.py`) preserving
+every original regression case.
+
+**Two real bugs found and fixed during the rebuild — both genuine defects,
+not design changes:**
+- **Blockfrost retry didn't catch connection resets.** `except
+  urllib.error.URLError` missed `http.client.RemoteDisconnected` (a
+  `ConnectionError` subclass, confirmed via `.__mro__`) — a real backfill run
+  crashed after 855 successful calls with zero rows written (nothing is
+  written until a run completes). Fixed: `except (urllib.error.URLError,
+  ConnectionError)`.
+- **Fencepost bug in backfill day-count.** `targets = [now - i*DAY for i in
+  range(N)]` with `N=7` produces offsets `{0..6}` — a 6-day *span*, not 7 (N
+  labeled points span only N−1 units of gap). "7-day backfill" silently never
+  reached 7 days back, so the 7D APR window could never populate under the
+  floor-only tolerance rule below. Fixed: `range(N + 1)` in both
+  `fetch_snapshots.py` and `migrate_snapshots_gap.py`.
+
+**Verified on real mainnet data, not just offline mocks:** a corrected 30-day
+gap-fill (6,806 Blockfrost calls, 617 rows) surfaced one genuinely bad
+reading — `MIN2-ADA-NIGHT` at one specific historical transaction had
+reserves/LP supply ~10,000× smaller than every neighboring snapshot (datum
+reserves exceeding UTxO Value, LP cross-check failing with a near-2⁶³
+remainder — almost certainly the wrong output/datum read for that tx). The
+automated RECONCILE FAIL / LP CROSS-CHECK FAIL / non-decreasing checks
+correctly flagged it; excluded before ingesting rather than trusting a
+flagged-but-still-written row. Confirms the existing "flag but still write,
+human reviews before trusting" design (established for `cmd_fetch`'s
+decreasing-reading case) catches real anomalies, not just synthetic ones.
+
+Full mechanism doc: `docs/mechanism-sqrtk.md` (unaffected — this is
+pipeline/schema, not the invariant itself). Toolkit:
+`automation/sqrtk/SQRTK_RUNBOOK.md`.
+
+### D30 addendum · APR window tolerance bands — floor-only, never under-report — 2026-08-02
+
+**Decision (user's explicit call, not a default):** `pickWindow` accepts a
+candidate snapshot only if it's **at least** the nominal window away
+(`daysAgo >= target`, never below), up to a sane outer cap (`max`), picking
+the smallest qualifying `daysAgo` (closest-from-above). Values: 7D → target
+7 / max 14; 30D → target 30 / max 45. Rejected alternatives: a symmetric
+min/max tolerance band (the original, buggy design — see main entry);
+scaling a longer-than-target reading down to pretend it's the nominal window
+(mathematically redundant anyway — annualizing via `ratio^(365/days) − 1`
+with the *true* `days` already produces the same result as scaling first
+then re-annualizing, under the same constant-compounding assumption
+annualization already makes).
+
+**Why never-under:** showing "7D APR: 6.2%" measured over only 5 real days
+quietly overstates confidence in a number that's actually more volatile/less
+settled than the label implies. Showing "—" (or a longer, honestly-labeled
+window) is preferable to a number wearing a shorter label than it earned.
+
+**Display principle, same session:** the gap between a nominal window label
+and the actual measured span must be surfaced with a marker that's
+**visible without hovering** — a native HTML `title` tooltip alone was
+rejected specifically because it has zero visible cue that anything is being
+hidden. The fix that shipped: a small `*` marker (only rendered when the
+actual day-count doesn't match the header, i.e. `floor(actualDays) !==
+target`) opens a proper tooltip (shadcn's Tooltip, backed by `@base-ui/react`
+— this project's actual primitive library, not Radix) with the exact figure
+and a one-line reason. The marker itself, not just its explanation, is the
+part that must never be hover-only — a value silently wearing the wrong
+label with no visible cue at all is the failure mode; a visible marker whose
+*details* need a hover/focus to reveal is normal, standard footnote-style UI,
+not a regression of the original fix.

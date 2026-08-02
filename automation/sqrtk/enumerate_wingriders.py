@@ -68,7 +68,7 @@ pools it hasn't seen there before -- so --out defaults to pools.json, the
 same shared file enumerate_minswap.py targets, not a separate per-venue
 file. Safe to re-run any time.
 
-Reads BLOCKFROST_PROJECT_ID from .env, same as sqrtk_snapshot.py.
+Reads BLOCKFROST_PROJECT_ID from .env, same as sqrtk_core.py.
 """
 import argparse
 import json
@@ -76,7 +76,7 @@ import os
 import re
 import sys
 
-import sqrtk_snapshot as S
+import sqrtk_core as S
 
 # WingRiders V2 constant-product pool script hash (payment credential).
 POOL_SCRIPT_HASH = "af97793b8702f381976cec83e303e9ce17781458c73c4bb16fe02b83"
@@ -433,7 +433,7 @@ def main():
             print(f"    {share[:24]}…  {why}")
 
     # ---- merge against whatever --out already holds, don't overwrite it ----
-    # Identity is (venue, track_asset), same key sqrtk_snapshot.py and
+    # Identity is (venue, track_asset), same key sqrtk_core.py and
     # enumerate_minswap.py both use. A pool already on file keeps its
     # existing entry untouched; this run only ADDS newly-discovered pools.
     existing = []

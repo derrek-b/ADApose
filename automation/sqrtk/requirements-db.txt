@@ -1,0 +1,5 @@
+# Only sqrtk_tick_db.py needs this -- the rest of the toolkit
+# (sqrtk_snapshot.py, sqrtk_tick.py, enumerate_*.py, selftest, all mock_*.py)
+# stays standard-library-only by design. Install into a venv, not system
+# Python: python3 -m venv .venv && .venv/bin/pip install -r requirements-db.txt
+psycopg[binary]

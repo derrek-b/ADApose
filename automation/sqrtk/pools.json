@@ -1,0 +1,222 @@
+[
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~6,835,550 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-MIN",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c82e2b1fd27a7712a1a9cf750dfbea1a5778611b20e06dd6a611df7a643f8cb75",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c82e2b1fd27a7712a1a9cf750dfbea1a5778611b20e06dd6a611df7a643f8cb75",
+    "asset_a": "lovelace",
+    "asset_b": "29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c64d494e"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~4,865,939 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-USDM",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c7dd6988c5a86693c76aeec1ea94afa41770be0de21a775ca7a2a1eabdb6a0171",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c7dd6988c5a86693c76aeec1ea94afa41770be0de21a775ca7a2a1eabdb6a0171",
+    "asset_a": "lovelace",
+    "asset_b": "c48cbb3d5e57ed56e276bc45f99ab39abe94e6cd7ac39fb402da47ad0014df105553444d"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~4,248,243 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-NIGHT",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ce74c52975908a612d5ce68327040d449aae99f8b463bb6de046a1b23c5713169",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ce74c52975908a612d5ce68327040d449aae99f8b463bb6de046a1b23c5713169",
+    "asset_a": "lovelace",
+    "asset_b": "0691b2fecca1ac4f53cb6dfb00b7013e561d1f34403b957cbb5af1fa4e49474854"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~3,819,929 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-USDA",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cee5cfbc5b0dc10c873a0bcc69e49b9af21b899f59337a894874c6b596c2da136",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cee5cfbc5b0dc10c873a0bcc69e49b9af21b899f59337a894874c6b596c2da136",
+    "asset_a": "lovelace",
+    "asset_b": "fe7c786ab321f41c654ef6c1af7b3250a613c24e4213e0425a7ae45655534441"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~3,671,718 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-SNEK",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c2ffadbb87144e875749122e0bbb9f535eeaa7f5660c6c4a91bcc4121e477f08d",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c2ffadbb87144e875749122e0bbb9f535eeaa7f5660c6c4a91bcc4121e477f08d",
+    "asset_a": "lovelace",
+    "asset_b": "279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f534e454b"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~3,509,044 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-FLDT",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cbc53f5c2a8cf3ef64081d2ec8c74333d567fc7ef271c1b97d21fdd53a2c5c889",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cbc53f5c2a8cf3ef64081d2ec8c74333d567fc7ef271c1b97d21fdd53a2c5c889",
+    "asset_a": "lovelace",
+    "asset_b": "577f0b1342f8f8f4aed3388b80a8535812950c7a892495c0ecdf0f1e0014df10464c4454"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~2,788,615 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-STRIKE",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c73e1518e92f367fd5820ac2da1d40ab24fbca1d6cb2c28121ad92f57aff8abce",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c73e1518e92f367fd5820ac2da1d40ab24fbca1d6cb2c28121ad92f57aff8abce",
+    "asset_a": "lovelace",
+    "asset_b": "f13ac4d66b3ee19a6aa0f2a22298737bd907cc95121662fc971b5275535452494b45"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,556,175 ADA, basis: estimated: sized through the ADA pool of 4e494748, so this figure is approximate and used only for ranking. That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-NIGHT-SNEK",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c3b3318a251bb71f8345c5affcd29645af2f56859eea740bec2a27c91027cb01d",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c3b3318a251bb71f8345c5affcd29645af2f56859eea740bec2a27c91027cb01d",
+    "asset_a": "0691b2fecca1ac4f53cb6dfb00b7013e561d1f34403b957cbb5af1fa4e49474854",
+    "asset_b": "279c909f348e533da5808898f87f9a14bb2c3dfbbacccd631d927a3f534e454b"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,535,734 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-RISE",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c12f550ab6b69859eeb660a8e13e7a0e71773861120346d69fc375a93cfb34b09",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c12f550ab6b69859eeb660a8e13e7a0e71773861120346d69fc375a93cfb34b09",
+    "asset_a": "lovelace",
+    "asset_b": "31bdb2d8ed6e2623e121b6db134a1491f4252b9ea87d928eb5290026496e66696e69747920526973696e67"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,503,200 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-SURF",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cb623827076d8b01e7529a77d9f0a9c2fb863dc9aa36416a4ebb12f9d0a6e7f15",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cb623827076d8b01e7529a77d9f0a9c2fb863dc9aa36416a4ebb12f9d0a6e7f15",
+    "asset_a": "lovelace",
+    "asset_b": "2d9db8a89f074aa045eab177f23a3395f62ced8b53499a9e4ad46c80464c4f57"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,365,581 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-NVL",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c43b22eef6f266e5173845f0c4b883ae8f7f3e54eb35ffb2848a29290f4968819",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c43b22eef6f266e5173845f0c4b883ae8f7f3e54eb35ffb2848a29290f4968819",
+    "asset_a": "lovelace",
+    "asset_b": "5b26e685cc5c9ad630bde3e3cd48c694436671f3d25df53777ca60ef4e564c"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,339,927 ADA, basis: estimated: sized through the ADA pool of 4e494748, so this figure is approximate and used only for ranking. That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-NIGHT-USDCx",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c70cabd53edd98d4ffc20d46d9f246ed14b61b3fa7c681c268e86c2a196b0947d",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c70cabd53edd98d4ffc20d46d9f246ed14b61b3fa7c681c268e86c2a196b0947d",
+    "asset_a": "0691b2fecca1ac4f53cb6dfb00b7013e561d1f34403b957cbb5af1fa4e49474854",
+    "asset_b": "1f3aec8bfe7ea4fe14c5f121e2a92e301afe414147860d557cac7e345553444378"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,307,917 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-ASCEND",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ce66195788208dcd363edb600eaf2331019e3599baba645d81d61ef060c82d861",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ce66195788208dcd363edb600eaf2331019e3599baba645d81d61ef060c82d861",
+    "asset_a": "lovelace",
+    "asset_b": "eb7a93ebc321647673490810f618b548d7c24aa64d30ae342dba70760014df10415343454e44"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,150,539 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-HOSKY",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ca449f98fa06fff1d6c17b95c65ca609660049dc683cc3e94d3846b05419fc20d",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ca449f98fa06fff1d6c17b95c65ca609660049dc683cc3e94d3846b05419fc20d",
+    "asset_a": "lovelace",
+    "asset_b": "a0028f350aaabe0545fdcb56b039bfb08e4bb4d8c4d7c3c7d481c235484f534b59"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,146,936 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-DJED",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ca939812d08cfb6066e17d2914a7272c6b8c0197acdf68157d02c73649cc3efc0",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4ca939812d08cfb6066e17d2914a7272c6b8c0197acdf68157d02c73649cc3efc0",
+    "asset_a": "lovelace",
+    "asset_b": "8db269c3ec630e06ae29f74bc39edd1f87c819f1056206e879a1cd61446a65644d6963726f555344"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,111,081 ADA, basis: estimated: sized through the ADA pool of 4d494e, so this figure is approximate and used only for ranking. That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-MIN-USDM",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cb950921763ce10c2600579460a4a40ba0c286bfab6497acd09ae0cd8b2ef687d",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cb950921763ce10c2600579460a4a40ba0c286bfab6497acd09ae0cd8b2ef687d",
+    "asset_a": "29d222ce763455e3d7a09a665ce554f00ac89d2e99a1a83d267170c64d494e",
+    "asset_b": "c48cbb3d5e57ed56e276bc45f99ab39abe94e6cd7ac39fb402da47ad0014df105553444d"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~1,040,455 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-IAG",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c7b12f25ce8d6f424e1edbc8b61f0742fb13252605f31dc40373d6a245e8ec1d1",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c7b12f25ce8d6f424e1edbc8b61f0742fb13252605f31dc40373d6a245e8ec1d1",
+    "asset_a": "lovelace",
+    "asset_b": "5d16cc1a177b5d9ba9cfa9793b07e60f1fb70fea1f8aef064415d114494147"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~988,959 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-SURGE",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cab2bc7cba8f1e4edbfbb83b630082ba6d711b7059dad402baa636d0e355732d5",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4cab2bc7cba8f1e4edbfbb83b630082ba6d711b7059dad402baa636d0e355732d5",
+    "asset_a": "lovelace",
+    "asset_b": "e992ef75f2367e6ecd93716ae88eba0d005dd91fd3a21f650b6496b55355524745"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~981,249 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-iUSD",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c452089abb5bf8cc59b678a2cd7b9ee952346c6c0aa1cf27df324310a70d02fc3",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c452089abb5bf8cc59b678a2cd7b9ee952346c6c0aa1cf27df324310a70d02fc3",
+    "asset_a": "lovelace",
+    "asset_b": "f66d78b4a3cb3d37afa0ec36461e51ecbde00f26c8f0a68f94b6988069555344"
+  },
+  {
+    "_comment": "Enumerated from addr1z84q0denmyep98ph3tm\u2026 . script_hash and the datum field paths come from the Minswap contract source (deployed/mainnet/script.json and lib/amm_dex_v2/types.ak). nft is the VENUE-WIDE MSP token and cannot identify a pool, which is why track_asset is set to this pool's own LP asset. asset pair and ordering confirmed by LP-name derivation against the LP token in the UTxO. Size at enumeration ~930,257 ADA, basis: ADA reserve in the Value (measured). That size is a RANKING aid only -- the measurement path never reads it.",
+    "label": "MIN2-ADA-LQ",
+    "venue": "minswap-v2",
+    "script_hash": "ea07b733d932129c378af627436e7cbc2ef0bf96e0036bb51b3bde6b",
+    "nft": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c4d5350",
+    "track_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c6263e0101384dace4d7a8dadf0e6d45c8d43c8872604118ee82e3f2212934917",
+    "lp_asset": "f5808c2c990d86da54bfc97d89cee6efa20cd8461616359478d96b4c6263e0101384dace4d7a8dadf0e6d45c8d43c8872604118ee82e3f2212934917",
+    "asset_a": "lovelace",
+    "asset_b": "da8c30857834c6ae7203935b89278c532b3995245295456f993e1d244c51"
+  }
+]

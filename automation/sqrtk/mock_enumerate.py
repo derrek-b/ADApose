@@ -26,7 +26,7 @@ import os
 import sys
 import types
 
-import sqrtk_snapshot as S
+import sqrtk_core as S
 import enumerate_minswap as E
 from lp_name import LP_POLICY, POOL_NFT, lp_asset_name
 

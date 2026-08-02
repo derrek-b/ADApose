@@ -40,14 +40,14 @@ pools it hasn't seen there before. Safe to re-run any time -- e.g. to pick
 up pools created since the last run, or to raise --top and reach further
 down the size ranking -- without losing what's already on file.
 
-Reads BLOCKFROST_PROJECT_ID from .env, same as sqrtk_snapshot.py.
+Reads BLOCKFROST_PROJECT_ID from .env, same as sqrtk_core.py.
 """
 import argparse
 import json
 import os
 import sys
 
-import sqrtk_snapshot as S
+import sqrtk_core as S
 from lp_name import LP_POLICY, POOL_NFT, POOL_SCRIPT_HASH, lp_asset_name, selftest
 
 # base form: script payment credential + Minswap's pool stake key
@@ -344,7 +344,7 @@ def main():
 
     # ---- merge against whatever --out already holds, don't overwrite it ----
     # Identity is (venue, track_asset) -- track_asset is the pool's own unique
-    # LP token, the same key sqrtk_snapshot.py uses internally. label/address/
+    # LP token, the same key sqrtk_core.py uses internally. label/address/
     # size fields are NOT identity: a pool already on file keeps its existing
     # entry untouched even if this run would have ranked or labelled it
     # differently, so a re-run only ever ADDS newly-discovered pools.
@@ -385,10 +385,11 @@ def main():
     print(f"{args.out} now holds {len(merged)} pools "
           f"({len(existing)} existing + {len(new_pools)} added).")
     print(f"{bf.calls} API calls used.")
-    print("\nNext: python3 sqrtk_snapshot.py discover --pools "
+    print("\nNext: python3 discover_venue_datum.py --pools "
           f"{args.out} --pool {pools[0]['label'] if pools else '<label>'}")
-    print("Confirm reserve_a/reserve_b/total_liquidity against the Value, then run "
-          "`measure`.")
+    print("Confirm reserve_a/reserve_b/total_liquidity against the Value, then sync "
+          "new entries into the `pools` DB table -- fetch_snapshots.py picks them up "
+          "automatically from there.")
     return 0
 
 

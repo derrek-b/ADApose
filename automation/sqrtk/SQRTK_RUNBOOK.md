@@ -1,6 +1,6 @@
 # √k Snapshot — Developer Runbook
 
-ADApose Labs, Inc. · scripts: `sqrtk_snapshot.py` (deep snapshot), `sqrtk_tick.py` (periodic collector) · last updated 30 Jul 2026
+ADApose Labs, Inc. · scripts: `sqrtk_core.py` (shared primitives), `fetch_snapshots.py` (the recurring, DB-driven pipeline), `discover_venue_datum.py` (onboarding a new venue) · last updated 2026-08-02
 
 ---
 
@@ -42,10 +42,14 @@ fee_apr = ((sqrt_k_per_lp[t1] / sqrt_k_per_lp[t0]) ** (365/days) - 1) × 100
 
 ## 2. Prerequisites
 
-Python 3.9 or newer. **No third-party packages** — the script is standard
-library only (`urllib`, `json`, `csv`, `decimal`, `bisect`, `dataclasses`). No
-`pip install` step, no virtualenv needed, nothing to audit for supply-chain
-risk.
+Python 3.9 or newer. **Standard library only** (`urllib`, `json`, `csv`,
+`decimal`, `bisect`, `dataclasses`) for everything except `fetch_snapshots.py`
+and `migrate_snapshots_gap.py`, which read the `pools` registry and each
+pool's latest state from Postgres and need `psycopg` for that — install it
+into a venv, never system Python: `python3 -m venv .venv && .venv/bin/pip
+install -r requirements-db.txt`. Every other file in this toolkit
+(`sqrtk_core.py`, `discover_venue_datum.py`, `enumerate_*.py`, `selftest.py`,
+all `mock_*.py`) stays dependency-free.
 
 A Blockfrost project ID for **mainnet**. Check your plan's daily request cap
 and per-second limit on your Blockfrost dashboard before a large run; the
@@ -64,6 +68,11 @@ BLOCKFROST_PROJECT_ID=mainnet...
 BLOCKFROST_BASE_URL=https://cardano-mainnet.blockfrost.io/api/v0
 ```
 
+`fetch_snapshots.py` and `migrate_snapshots_gap.py` additionally need
+`DATABASE_URL` in the same `.env` — read-only in principle (they only ever
+issue SELECTs), though that's enforced by the code today, not yet by the
+credential itself; there's no separate read-only Postgres role set up.
+
 The `.env` stays on the machine that runs the script. The key is never printed,
 never written to the CSV, and is stripped from HTTP error text before any
 exception surfaces (`Env.redact`). A shell `export` of either variable
@@ -81,47 +90,62 @@ under a couple seconds total and they are the difference between "it
 executes" and "the arithmetic is right".
 
 ```bash
-python3 sqrtk_snapshot.py selftest
-python3 mock_run.py
+python3 selftest.py
+python3 mock_wingriders.py
 python3 mock_minswap.py
 python3 mock_enumerate.py
-python3 mock_tick.py
+python3 mock_fetch_db.py
 ```
 
-`selftest` covers address decoding (including that the enterprise `0x71` and
-base `0x11` forms of the *same* script yield the same payment credential), pool
-output selection (including a decoy key address whose 28-byte credential
-deliberately collides with the script hash — a matcher that ignores the header
-byte returns the wrong UTxO), datum path walking, the invariant algebra, and
-the paged binary search over transaction history.
+`selftest.py` covers address decoding (including that the enterprise `0x71`
+and base `0x11` forms of the *same* script yield the same payment
+credential), pool output selection (including a decoy key address whose
+28-byte credential deliberately collides with the script hash — a matcher
+that ignores the header byte returns the wrong UTxO), datum path walking,
+the invariant algebra, and the paged binary search over transaction history
+— all against `sqrtk_core.py`, the shared module every other file in this
+toolkit imports from.
 
-`mock_run.py` fabricates 400 days of pool history with a known fee rate of
-0.02%/day baked in, plus two deposits that mint LP, plus a treasury accumulator
-growing inside the same Value. It then runs the real `measure` code path over
-that fake chain and asserts the reported APR comes back at 7.572% on every
-window. It also re-runs with deliberately broken venue rules to confirm the
-guard rails fire and the process exits non-zero.
+`mock_wingriders.py` (renamed from `mock_run.py`) fabricates 400 days of pool
+history with a known fee rate of 0.02%/day baked in, plus two deposits that
+mint LP, plus a treasury accumulator growing inside the same Value. It then
+calls `fetch_snapshots.collect_snapshots` directly over that fake chain and
+computes the annualized rate from the raw returned snapshots (there's no more
+precomputed `fee_apr_pct` column — that figure is only ever computed at
+display time now), asserting it comes back at 7.572% for every window. It
+also re-runs with deliberately broken venue rules to confirm the guard rails
+fire (a non-empty `problems` list), and with the unverified-venue case
+removed entirely — `collect_snapshots` doesn't check `venue.verified` at all
+anymore, that moved to `fetch_snapshots.cmd_fetch`'s own per-pool loop,
+covered by `mock_fetch_db.py` instead.
 
-`mock_minswap.py` covers what the WingRiders-shaped fixture in `mock_run.py`
-cannot: reserves and circulating LP read from the pool datum rather than the
-Value, the `max_lp_supply − held == total_liquidity` cross-check, and the
-venue-wide-NFT problem — Minswap V2 shares one NFT across every pool, so
-history must be paged by the pool's own LP asset, never by that shared token;
-a regression back to NFT-paging fails loudly here.
+`mock_minswap.py` covers what the WingRiders-shaped fixture in
+`mock_wingriders.py` cannot: reserves and circulating LP read from the pool
+datum rather than the Value, the `max_lp_supply − held == total_liquidity`
+cross-check, and the venue-wide-NFT problem — Minswap V2 shares one NFT
+across every pool, so history must be paged by the pool's own LP asset,
+never by that shared token; a regression back to NFT-paging fails loudly
+here. Same `collect_snapshots`-based adaptation as `mock_wingriders.py`.
 
 `mock_enumerate.py` is an offline dry-run of `enumerate_minswap.py` against a
 fabricated address listing built to hit every case the enumerator has to
 handle: reverse-ordered pairs, a pair only recoverable from the datum, a
 stray airdropped token alongside a real pair, duplicate asset-name labels,
-a decoy output with no MSP NFT, and a listing longer than `--top`.
+a decoy output with no MSP NFT, and a listing longer than `--top`. Untouched
+by the snapshot-model change apart from a one-line import fix.
 
-`mock_tick.py` covers the periodic collector (section 8): diffing against a
-prior row instead of re-deriving history, skipping an unverified venue with
-zero network calls, still *writing* a decreasing reading while flagging it as
-a problem, and correctly doing nothing when the last row on file is too
-recent to say anything new. It reuses `mock_run.py`'s own fixture for the
-bootstrap case rather than duplicating it, since bootstrapping literally is
-`measure`'s lookback sweep, unmodified.
+`mock_fetch_db.py` (replaces `mock_tick.py`) covers `fetch_snapshots.cmd_fetch`'s
+own orchestration, as distinct from chain-reading correctness: no prior
+snapshot triggers a backfill; a prior snapshot fresher than 0.5 days skips
+with exactly one API call total (the chain-tip fetch — the freshness
+pre-check is a pure timestamp comparison against the DB, costing nothing);
+an unverified venue is skipped before any per-pool call; a fresh reading
+below the DB's latest known value is still written, flagged as a problem.
+It monkeypatches `sqrtk_core.Env`/`Blockfrost` plus
+`fetch_snapshots.load_database_url`/`psycopg.connect`/`load_pools_from_db`/
+`load_latest_snapshots_from_db`, so no real DB connection or `.env` is ever
+touched, and reuses `mock_wingriders.py`'s fixture by import rather than
+duplicating it.
 
 All five must print a clean pass before you spend a single API call.
 
@@ -135,9 +159,16 @@ entries directly — `script_hash`, `nft`, `track_asset`, `lp_asset`,
 `asset_a`/`asset_b` — no guessing:
 
 ```bash
-python3 enumerate_minswap.py --top 60 --out pools.json
-python3 enumerate_wingriders.py --top 40 --out pools.json
+python3 enumerate_minswap.py --top 20 --out pools.json
 ```
+
+WingRiders tracking is currently deferred — `pools.json` is Minswap-only,
+top 20 by TVL, as of the 2026-08-01 cleanup (all prior WingRiders entries,
+and Minswap pools ranked 21+, were deliberately dropped along with their
+`measurements`/`current_readings` rows). `enumerate_wingriders.py --top N
+--out pools.json` still works exactly the same way and would resume
+WingRiders tracking; that's a deliberate decision to make, not a routine
+step in this build sequence right now.
 
 Both **merge into `--out`, never overwrite it.** Identity is `(venue,
 track_asset)`, not `label` and not `address` — see why below. A pool already
@@ -146,6 +177,13 @@ there before. Both default `--out` to the same `pools.json`, so running
 either (in any order, any number of times) builds one shared file, not one
 per venue. Safe to re-run any time — to raise `--top` and reach further down
 the size ranking, or to pick up pools created since the last run.
+
+**`pools.json` is not what the recurring pipeline reads.** `fetch_snapshots.py`
+reads the `pools` registry table in Postgres, read-only — a new entry added
+here needs a separate (currently manual, one-off) sync step into that table
+before `fetch_snapshots.py` will ever pick it up. `pools.json` is purely this
+step's own output/hand-off format for the discovery workflow, same role a
+CSV plays elsewhere in this toolkit's hand-off conventions.
 
 Fields each script fills in:
 
@@ -196,7 +234,7 @@ entirely) still requires — guessing datum indices is precisely how you get a
 number that is plausible and wrong.
 
 ```bash
-python3 sqrtk_snapshot.py discover --pools pools.json --pool WR2-ADA-XXX
+python3 discover_venue_datum.py --pools pools.json --pool WR2-ADA-XXX
 ```
 
 This prints, for the pool's most recent UTxO: the address, its decoded payment
@@ -221,36 +259,59 @@ not crash, it does not look absurd, and it is off by 16%.
 
 ---
 
-## 7. Step 3 — `measure`
+## 7. Step 3 — `fetch_snapshots.py`, the recurring pipeline
 
 ```bash
-python3 sqrtk_snapshot.py measure --pools pools.json --out sqrtk.csv --days 7,14,30,60
+.venv/bin/python3 fetch_snapshots.py --out /tmp/run.csv --backfill-days 7
 ```
 
-**Appends to `--out`, never overwrites it.** A fresh/missing path still gets a
-header; an existing one is extended in place. Safe to re-run any time — to add
-more history for pools already on file, or to onboard new ones into the same
-durable file — and it's the reason `sqrtk.csv` is meant to be one shared,
-ever-growing file rather than something a run replaces.
+**One tool now, not two.** The old design split this into `measure` (a
+multi-window lookback sweep, for onboarding) and `sqrtk_tick.py` (a periodic
+current-state diff, for pools already on file) — two commands producing two
+different row shapes (a comparison-pair: `from_ts`/`to_ts`/precomputed
+`growth_pct`/`fee_apr_pct`). That comparison-pair design broke silently under
+an ongoing daily cadence: a display layer picked whichever single row's own
+window was "closest to nominal 7/30 days," but a daily diff only ever
+produces ~1-day-window rows, so the picked row — and the displayed APR —
+would freeze forever after the first sweep and never update again.
 
-For each pool the script finds the chain tip, then for each lookback point
-locates the newest transaction touching the pool's *tracking asset*
-(`track_asset` if set, else `nft`) at or before that timestamp. That
-transaction isn't necessarily a pool-state change, though — the tracking asset
-can move in an ordinary wallet-to-wallet transfer that never touches the pool
-output at all — so the script walks backward from there, skipping non-pool
-transactions, until it finds one that actually is the pool. Nothing changed in
-between by definition, so the state found is still correct for the requested
-timestamp; only its recorded `from_ts` is a little older. From there it pulls
-that transaction's UTxOs, selects the pool output, computes reserves and LP
-supply per the venue rule, and derives `sqrt_k_per_lp`. It then annualises
-growth from each earlier point to the most recent one.
+The fix: store bare point-in-time snapshots instead (pool, timestamp,
+`sqrt(k)/LP`, reserves, LP supply — no comparison baked in at all). Any
+window's APR gets computed **fresh**, at display time, by picking two
+snapshots and computing growth between them on the spot (see
+`web/src/db/schema.ts`'s `pool_snapshots` comment). That collapses onboarding
+and ongoing collection into one function, `collect_snapshots(bf, pool,
+venue, targets, source, problems)`, called with a different `targets` list
+depending on the case:
 
-The finding step matters for cost. `/assets/{asset}/transactions` is
-newest-first at 100 rows per page and a busy pool has thousands of pages, so
-rather than paging the lot the script brackets the target timestamp by
-doubling the page index, then binary-searches — roughly `2·log₂(pages)`
-requests per lookback point instead of `pages`.
+- **A pool with no prior snapshot at all** — `fetch_snapshots.py` backfills
+  `--backfill-days` (default 7) worth of *spread*: daily snapshots at offsets
+  0 through N days back from now (N+1 points, so the oldest point is
+  genuinely N days old, not N−1 — a fencepost bug fixed 2026-08-01), same
+  idea `measure`'s lookback sweep served, just producing N+1 separate point
+  rows instead of comparison-pairs sharing one "now" endpoint.
+- **A pool with a prior snapshot, checked first, for free** — before any
+  Blockfrost call at all, `now` (fetched once for the whole run) is compared
+  against the pool's last known snapshot timestamp (read from Postgres, not
+  a CSV). If less than 0.5 days have passed, the pool is skipped entirely —
+  `now` can only ever be ≥ any state a real read would find, so this is a
+  *sufficient* condition, not a heuristic: no on-chain read could change the
+  answer. This is strictly cheaper than the old design, where the
+  "nothing new" case still cost the full per-pool read before discovering
+  there was nothing to write.
+- **Otherwise** — one current-state read, diffed against the last known
+  value purely to flag (not gate) a decreasing reading.
+
+The actual finding/reading mechanics are unchanged from the old `measure`:
+for each target timestamp, the newest transaction touching the pool's
+*tracking asset* (`track_asset` if set, else `nft`) at or before it is
+located, walking backward past any non-pool transaction (a wallet transfer,
+a farm deposit — the tracking asset moving without the pool being touched)
+until a genuine pool-state transaction is found. `/assets/{asset}/transactions`
+is newest-first at 100 rows per page and a busy pool has thousands of pages,
+so rather than paging the lot, the search brackets the target by doubling
+the page index, then binary-searches — roughly `2·log₂(pages)` requests per
+target instead of `pages`.
 
 **LP supply, both verified venues today: `pool_holds_remainder`.** Minswap V2
 and WingRiders V2 both hold their own unissued LP/share reserve inside the
@@ -258,12 +319,8 @@ pool UTxO, so circulating supply is `max_supply − held`, read directly off the
 same Value already fetched for reserves — no extra requests, no history walk.
 (A different mechanism, `mint_history` — reconstructing supply from mint/burn
 events, walked backward from current supply since Blockfrost's history
-endpoint doesn't carry block times — still exists in the script for
-`wingriders-v1`/`generic-cpmm`, the two venues that remain `verified=False`.
-It used to be WingRiders V2's mechanism too, before its actual on-chain
-behaviour was confirmed against contract source; if you're reading old notes
-or an old mock run that assumed mint-history costs for WingRiders V2, they're
-stale.)
+endpoint doesn't carry block times — still exists for `wingriders-v1`/
+`generic-cpmm`, the two venues that remain `verified=False`.)
 
 ### Estimating request count
 
@@ -271,7 +328,7 @@ Per pool, roughly:
 
 ```
 1                                    chain tip (once per run, not per pool)
-+ per lookback point:  2·log₂(pages) page reads     ≈ 18–22 for a busy pool
++ per target day:      2·log₂(pages) page reads     ≈ 18–22 for a busy pool
                      + 1              tx UTxOs
                      + 1              datum (if the venue needs one for
                                        reserves/treasury/LP supply)
@@ -279,117 +336,38 @@ Per pool, roughly:
                                        walking back to a genuine pool tx
 ```
 
-Observed, not estimated: a 100-pool run (60 Minswap V2 + 40 WingRiders V2, 30
-Jul 2026) used 2,545 + 1,364 = 3,909 calls for 371 rows — roughly 35–40
-requests per pool for up to five points, comparable between the two venues
-now that neither needs a mint-history walk. The mock run reports its own
-exact call count at the end; use that shape to sanity-check a real run before
-scaling to the full pool list.
+Observed, not estimated (from the old `measure`, same underlying mechanics):
+a 100-pool run (60 Minswap V2 + 40 WingRiders V2, 30 Jul 2026) used
+2,545 + 1,364 = 3,909 calls for 371 rows — roughly 35–40 requests per pool
+for up to five target points. A routine tick against an already-known,
+already-fresh-enough pool costs a small fraction of that (one page lookup,
+one tx-UTxOs fetch, a datum fetch if needed — call it 3–4 requests), or
+literally zero extra calls if the freshness pre-check above skips it.
 
-If you are near a daily cap: measure Minswap V2 first, and shorten to
-`--days 30` for a first pass. Two points are enough to produce a rate.
-
-### Output columns
+### Output columns (flat CSV, one row per snapshot)
 
 | Column | Meaning |
 |---|---|
-| `pool`, `venue` | From your config |
-| `track_asset` | The pool's stable identity (`pool.identity` — `track_asset` if set, else `nft`), **not** `pool`/`label`. Use this, never the label, to join a pool's rows across runs or over time — labels can change (a re-enumeration with better ticker resolution, a manual rename); this doesn't |
-| `from_ts`, `to_ts`, `days` | Actual observed timestamps of the two states, and the gap. **Not** exactly the requested lookback — the script snaps to real transactions, so a quiet pool may give you a 34-day window when you asked for 30. Always read `days`, never assume it |
-| `sqrtk_per_lp_from`, `sqrtk_per_lp_to` | The measured invariant, 18 decimal places |
-| `growth_pct` | Raw growth over the window |
-| `fee_apr_pct` | **The number.** Annualised, compounded |
-| `reserve_a_to`, `reserve_b_to`, `lp_supply_to` | Latest state, for your own reconciliation |
-| `venue_verified` | Always `True` for any row that exists — an unverified venue produces no rows at all (below), so this column is provenance (what the venue's status was at write time), not something you need to filter on |
-| `source` | `deep` for every row this script (`measure`) writes — a nested 7/14/30/60-style lookback sweep. The (not yet built) periodic tick tool tags its own rows `tick`. Needed because the two can genuinely mix in one pool's history (a tick run bootstrapping a never-measured pool by invoking `measure` for it), so inferring the source from the `days` pattern alone isn't reliable |
+| `venue`, `pool_label` | From the `pools` registry |
+| `track_asset` | The pool's stable identity (`pool.identity` — `track_asset` if set, else `nft`), **not** `pool_label`. Labels can change (a re-enumeration with better ticker resolution, a manual rename); this doesn't |
+| `ts` | The snapshot's own on-chain timestamp — **not** necessarily the requested target. The search snaps to a real transaction, so a quiet pool's "7 days ago" target may resolve several days further back. Always read `ts`, never assume the target was hit exactly |
+| `sqrtk_per_lp` | The measured invariant, 18 decimal places. **No `growth_pct`/`fee_apr_pct` here anymore** — those are computed fresh from a pair of snapshots at display time, never stored per-row |
+| `reserve_a`, `reserve_b`, `lp_supply` | Raw state at `ts`, for independent reconciliation |
+| `venue_verified` | Always `True` for any row that exists — an unverified venue produces no rows at all, so this column is provenance, not something to filter on |
+| `source` | `backfill` (a new pool's initial density, or the one-time historical gap-fill), `live` (a routine tick against an already-known pool), or `migration` (carried over from the old comparison-pair `measurements` table during the cutover — see `web/scripts/migrate-measurements-to-pool-snapshots.mts`) |
 
-Several lookback points on a quiet pool can land on the same transaction; the
-script de-duplicates by transaction hash *within one run* before computing
-rates, so you will sometimes get fewer rows than lookback points in a single
-`measure` call. That is correct behaviour, not a dropped measurement. It is
-**not** cross-run dedup, though — because `--out` is append-only (above), two
-`measure` runs close together in time can both land on the same underlying
-transaction and each write their own row for it. That's an accepted,
-harmless byproduct of never overwriting the file: dedupe at analysis time on
-`(pool, from_ts, to_ts)` if it matters for what you're computing, rather than
-trying to prevent it at write time.
+Several target days on a quiet pool can land on the same transaction;
+`collect_snapshots` de-duplicates by transaction hash *within one call*
+before returning rows, so you may get fewer rows than targets requested —
+correct behaviour, not a dropped measurement. Cross-run duplication is a
+non-issue by construction now: `pool_snapshots` has a unique constraint on
+`(venue, track_asset, ts)`, and `ingest-snapshots.mts` upserts with
+`ON CONFLICT DO NOTHING` against it — re-running this script, or re-ingesting
+the same CSV, is always safe.
 
 ---
 
-## 8. Step 4 — `sqrtk_tick.py`, the periodic (weekly) collector
-
-```bash
-python3 sqrtk_tick.py --pools pools.json --out sqrtk.csv
-```
-
-**What it is, and why it's a separate script rather than a `measure` flag.**
-`measure`'s lookback sweep exists to reconstruct several historical points
-from a single run — necessary the first time a pool is ever measured, and
-expensive precisely because it's reconstructing the past (binary search into
-transaction history per lookback point). Once a pool already has a real
-periodic series on file, that reconstruction is redundant: this week's
-current state *is* next week's historical point, for free, the moment it's
-read. `sqrtk_tick.py` does exactly that — one current-state read per pool,
-diffed against the most recent row already in `sqrtk.csv` for that pool —
-and nothing else. Recommended cadence: weekly, run via cron or any scheduler;
-nothing about the script assumes a particular interval, but the whole
-persistence-testing motivation behind building this (see the project's
-design record, not this runbook) is built around week-sized segments.
-
-**Identity for the "most recent row" lookup is `track_asset`, never `pool`.**
-Same reasoning as everywhere else in this pipeline — labels can change (a
-re-enumeration with better ticker resolution, a manual rename), the pool's
-own LP/share token doesn't.
-
-**A pool with no prior row is bootstrapped, not left blank.** Rather than
-recording a level with no computable growth yet, the script re-runs
-`measure`'s actual lookback sweep for just that one pool — reusing
-`cmd_measure` directly, not reimplemented — so a newly-added pool enters the
-series with real multi-window depth on day one instead of waiting a month
-for enough ticks to accumulate. This is exactly why `sqrtk.csv` has a
-`source` column: bootstrap rows this script triggers are tagged `deep`
-(they came from `measure`'s code path, unmodified), and this script's own
-rows are tagged `tick` — the two genuinely mix within one pool's history,
-so inferring which is which from the `days` pattern alone isn't reliable
-once bootstrapping is in the picture.
-
-**An unverified venue is skipped, exactly like `measure` refuses to produce
-anything for one (section 6).** There's no safe number to compute for an
-unconfirmed extraction rule, bootstrap or tick — an unverified venue's pool
-is flagged and skipped before any per-pool network call, not measured and
-marked provisional.
-
-**The correctness check carries over unchanged.** A fresh reading below the
-last one on file is flagged as a problem (non-zero exit) — and still
-*written*, same as `measure`'s own behaviour: a drop is signal, never
-something to silently drop from the record. A pool ticked again with
-nothing new since its last row (same underlying transaction, nothing
-happened in between) writes nothing and flags nothing — that's not an
-error, just no new information yet.
-
-**Cost, per pool, is dramatically cheaper than the lookback sweep.** A
-current-state read is one page lookup (no binary search needed — the target
-is "now," which resolves on the first page essentially always), one tx-UTxOs
-fetch, and a datum fetch if the venue needs one for reserves/treasury/LP
-supply — call it 3–4 requests per already-known pool, versus the ~35–40 a
-full lookback sweep costs (section 7). The one call to `latest_block()` is
-shared across the whole run, not per pool. Bootstrap calls (new pools only)
-still cost the full sweep price, reported by that sub-call's own output.
-
-**Known minor limitation, accepted rather than engineered around:** a
-bootstrap sub-call constructs its own Blockfrost client inside `cmd_measure`
-rather than sharing this script's rate limiter, so the two aren't perfectly
-continuous across that boundary, and their API call counts are reported
-separately rather than unified into one number. Reusing `measure`'s
-correctness check and append logic completely unmodified was judged more
-valuable than a unified call count — the alternative was duplicating that
-logic locally, which is exactly the kind of drift this project has already
-been bitten by once (`mock_run.py`'s fixture silently going stale when
-WingRiders V2's real LP-supply mechanism changed out from under it).
-
----
-
-## 9. The correctness check, and what a failure means
+## 8. The correctness check, and what a failure means
 
 `sqrt_k_per_lp` must be **non-decreasing** for every pool over every interval.
 If it falls, the script reports the drop with both transaction hashes and exits
@@ -429,7 +407,7 @@ Exit code is 0 only when no problems were flagged at all.
 
 ---
 
-## 10. What this does *not* measure
+## 9. What this does *not* measure
 
 `sqrt_k_per_lp` growth is fee yield with impermanent loss removed by
 construction. That is the right measure for comparing venues and for validating
@@ -450,7 +428,7 @@ its own open question.
 
 ---
 
-## 11. Known-unverified list
+## 10. Known-unverified list
 
 Updated 30 Jul 2026 — the version of this list from before the first live
 runs is obsolete; every item it raised about Minswap V2 and WingRiders V2 has

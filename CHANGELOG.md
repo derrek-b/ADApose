@@ -5,6 +5,48 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### `pool_snapshots` replaces `measurements` — √k pipeline rebuilt end-to-end (2026-08-02)
+
+- **Diagnosed and fixed a real bug:** the old comparison-pair `measurements`
+  table would have frozen 7D/30D APR forever under daily ticking (never
+  refreshing past the initial deep-sweep). Replaced with point-in-time
+  `pool_snapshots`; APR computed fresh at display time from any two
+  snapshots. `current_readings` FK columns swapped to from/to
+  snapshot-ID pairs. See D30.
+- **Python toolkit (`automation/sqrtk/`) rewritten to match:**
+  `sqrtk_snapshot.py`/`sqrtk_tick.py`/`sqrtk_tick_db.py`/`mock_run.py`/
+  `mock_tick.py` deleted; new `sqrtk_core.py` (shared primitives),
+  `fetch_snapshots.py` (recurring pipeline), `discover_venue_datum.py`,
+  `migrate_snapshots_gap.py` (one-time), `selftest.py`, renamed/rewritten
+  mocks.
+- **Two real bugs fixed during the rewrite:** Blockfrost retry logic didn't
+  catch connection resets (`ConnectionError`/`RemoteDisconnected`, missed by
+  a narrower `except urllib.error.URLError`); a fencepost bug meant "N days
+  of backfill" only ever produced N−1 days of real spread.
+- **Live migration executed:** 40 historical points extracted from the old
+  `measurements` table, a corrected 30-day mainnet gap-fill run (6,806
+  Blockfrost calls, 617 rows), one anomalous reading excluded after manual +
+  automated-check confirmation (see D30).
+- `web/scripts/refresh-minswap-readings.mts` rewritten: `pickWindow` is now
+  floor-only (never accept a candidate under the nominal window — D30
+  addendum); `decimal.js` added as a dependency for precision parity with
+  the Python side.
+- Pre-existing `web/tsconfig.json` scoping bug fixed (excluded `scripts/`
+  from Next's typecheck, unblocking `npm run build`).
+
+### Pool comparison table — styling pass + APR-mismatch display (2026-08-02)
+
+- Brand colors centralized in `globals.css` as named Tailwind v4 theme
+  tokens (`--brand-crimson`, `--brand-cardano-blue`) instead of hex literals
+  scattered across components.
+- Table: borders, alternating-row tint, crimson header (removed an
+  inherited hover-highlight that didn't apply to a non-interactive header).
+- 7D/30D APR cells: a value whose actual measured window doesn't match its
+  nominal label now shows a small `*` marker (visible without hovering)
+  opening a tooltip with the real figure and a one-line reason — added
+  shadcn's Tooltip component (`@base-ui/react`-backed) and wired
+  `TooltipProvider` into the app's provider tree.
+
 ### `web/` scaffolded — Next.js foundation for the aggregator (2026-07-31)
 
 - **D29: frontend foundation decided and built.** Next.js (App Router,

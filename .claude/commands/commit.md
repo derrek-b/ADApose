@@ -75,8 +75,8 @@ Don't stage or commit anything yet based on this choice beyond what Step 3 does 
 Stage **all** the files intended for this commit pass — regardless of whether Step 2 chose single or per-scope, since the doc-staleness check in Step 4 needs to see the complete picture (a stale-doc heuristic can span what were categorized as separate scopes). Be specific — add files by name, not with `git add -A` or `git add .`. If per-scope grouping matters for Step 7, keep a mental (or written) note of which scope each staged file belongs to.
 
 **Important:**
-- Do NOT stage files that likely contain secrets — especially `scripts/sqrtk/.env` (Blockfrost project ID) or any `.env*` variant (gitignored, but check anyway). If ever committing something under `legacy/`, the same applies to `legacy/executor/.env.local` (`EXECUTOR_SEED_PHRASE` is a hot wallet key, from when that scaffold was live).
-- Do NOT stage large binaries or build artifacts unless explicitly part of the change — `legacy/validators/build/`, `scripts/sqrtk/__pycache__/`, `scripts/dispersion/adapose_dispersion/` (should already be gitignored; flag it if you see any about to be staged anyway). If something you expect to see staged doesn't show up in `git status`, check `git check-ignore -v <path>` before assuming it's fine — a blanket `.gitignore` pattern (e.g. a bare `dist/`) can silently swallow a legitimately-wanted file with no error.
+- Do NOT stage files that likely contain secrets — especially `automation/sqrtk/.env` (Blockfrost project ID) or any `.env*` variant (gitignored, but check anyway). If ever committing something under `legacy/`, the same applies to `legacy/executor/.env.local` (`EXECUTOR_SEED_PHRASE` is a hot wallet key, from when that scaffold was live).
+- Do NOT stage large binaries or build artifacts unless explicitly part of the change — `legacy/validators/build/`, `automation/sqrtk/__pycache__/`, `scripts/dispersion/adapose_dispersion/` (should already be gitignored; flag it if you see any about to be staged anyway). If something you expect to see staged doesn't show up in `git status`, check `git check-ignore -v <path>` before assuming it's fine — a blanket `.gitignore` pattern (e.g. a bare `dist/`) can silently swallow a legitimately-wanted file with no error.
 - Warn the user if you see any such files in the changes
 
 ## Step 4: Check Docs for Staleness
@@ -101,13 +101,13 @@ Globs are allowed. For every doc under `docs/` (except `decisions.md` and `crib_
 
 **Also check for:**
 - **New docs without a Source comment** — if the pending changes add a doc under `docs/` (not `legacy/docs/`) that describes source files but has no `<!-- Source: ... -->` comment, flag it: propose adding one (this is how the convention propagates)
-- **New source files** not covered by any doc's source mapping — flag as "new file not covered by docs". Doesn't apply to `legacy/` or to `scripts/` (its own doc is `scripts/sqrtk/SQRTK_RUNBOOK.md`, updated by hand as part of the work, not by this skill's heuristics below — none of them target Python).
+- **New source files** not covered by any doc's source mapping — flag as "new file not covered by docs". Doesn't apply to `legacy/` or to `scripts/` (its own doc is `automation/sqrtk/SQRTK_RUNBOOK.md`, updated by hand as part of the work, not by this skill's heuristics below — none of them target Python).
 
 **4c. Heuristic checks (README.md, CLAUDE.md — no source comments needed):**
 
-**Heuristic A — `scripts/sqrtk/` tool interface drift → README / CLAUDE.md / SQRTK_RUNBOOK.md:**
+**Heuristic A — `automation/sqrtk/` tool interface drift → README / CLAUDE.md / SQRTK_RUNBOOK.md:**
 
-If the pending changes touch `scripts/sqrtk/sqrtk_snapshot.py`, `scripts/sqrtk/sqrtk_tick.py`, `scripts/sqrtk/enumerate_minswap.py`, or `scripts/sqrtk/enumerate_wingriders.py` in a way that changes a CLI flag, a default, or the CSV schema (new/renamed/removed column): grep `CLAUDE.md`'s Commands section and `scripts/sqrtk/SQRTK_RUNBOOK.md` for the old invocation/column name. Hits → flag `[UPDATE]` with line references. This is the current-direction analog of the old Heuristic A (which was `executor/package.json` scripts drift) — same idea, different stack. Doesn't apply to `scripts/dispersion/` — that's a standalone side-script with no CLI-flag/schema contract documented elsewhere to drift out of sync.
+If the pending changes touch `automation/sqrtk/sqrtk_core.py`, `automation/sqrtk/fetch_snapshots.py`, `automation/sqrtk/enumerate_minswap.py`, or `automation/sqrtk/enumerate_wingriders.py` in a way that changes a CLI flag, a default, or the CSV schema (new/renamed/removed column): grep `CLAUDE.md`'s Commands section and `automation/sqrtk/SQRTK_RUNBOOK.md` for the old invocation/column name. Hits → flag `[UPDATE]` with line references. This is the current-direction analog of the old Heuristic A (which was `executor/package.json` scripts drift) — same idea, different stack. Doesn't apply to `scripts/dispersion/` — that's a standalone side-script with no CLI-flag/schema contract documented elsewhere to drift out of sync.
 
 **Heuristic B — N/A right now:**
 
@@ -115,13 +115,13 @@ The old Heuristic B checked `validators/aiken.toml` (Aiken compiler/Plutus versi
 
 **Heuristic C — Top-level structure change → README.md / CLAUDE.md:**
 
-If the pending changes add or remove a directory at depth 1–2 under `scripts/`, `web/`, `docs/` (not `legacy/` — that tree is frozen, see the scope exclusion), or the repo root:
+If the pending changes add or remove a directory at depth 1–2 under `scripts/`, `automation/`, `web/`, `docs/` (not `legacy/` — that tree is frozen, see the scope exclusion), or the repo root:
 1. Root `README.md` has a "Layout" table and `CLAUDE.md` has an "Architecture" section
-2. Flag `[UPDATE]` with the specific directory change ("added `scripts/sqrtk/enumerate_splash.py`", "removed `web/`")
+2. Flag `[UPDATE]` with the specific directory change ("added `automation/sqrtk/enumerate_splash.py`", "removed `web/`")
 
 **Heuristic D — Test infra change:**
 
-If the pending changes add or remove (modifications alone don't trigger) a `mock_*.py` file under `scripts/sqrtk/`, or a new offline-verification path in `sqrtk_snapshot.py`'s own `selftest` → flag `CLAUDE.md`'s Commands section as `[MAYBE]` (the "run before anything else" offline pre-flight list may need updating) and `scripts/sqrtk/SQRTK_RUNBOOK.md`'s section 4 as `[UPDATE]` if a new mock isn't listed there.
+If the pending changes add or remove (modifications alone don't trigger) a `mock_*.py` file under `automation/sqrtk/`, or a new offline-verification path in `selftest.py` → flag `CLAUDE.md`'s Commands section as `[MAYBE]` (the "run before anything else" offline pre-flight list may need updating) and `automation/sqrtk/SQRTK_RUNBOOK.md`'s section 4 as `[UPDATE]` if a new mock isn't listed there.
 
 **4d. If no docs need updating:**
 Say "No doc updates needed" and go straight to Step 7 with just the code changes.

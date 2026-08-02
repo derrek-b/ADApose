@@ -47,13 +47,17 @@ assume `legacy/`'s shapes (datum layout, redeemer set, invariants) carry
 over; they were built for a materially different accounting model
 (vault-level HWM crystallization vs. batch-rate share minting) and a
 materially different custody target. What **does** exist and is real,
-tested, mainnet-verified code: `scripts/sqrtk/` — a toolkit that measures √k
-fee-accrual directly on-chain across Minswap V2 and WingRiders V2, both
-pool enumeration and a growing historical dataset (`scripts/sqrtk/sqrtk.csv`).
-Read `scripts/sqrtk/SQRTK_RUNBOOK.md` before touching anything there.
+tested, mainnet-verified code: `automation/sqrtk/` — a toolkit that measures
+√k fee-accrual directly on-chain across Minswap V2 and WingRiders V2, both
+pool enumeration and a growing historical dataset (`automation/sqrtk/sqrtk.csv`).
+Read `automation/sqrtk/SQRTK_RUNBOOK.md` before touching anything there.
+Moved out of `scripts/` into its own top-level `automation/` directory so the
+whole data-refresh pipeline (this Python measurement toolkit, plus
+`web/scripts/`'s Node ingest/refresh steps, plus the scheduling orchestrator)
+has one conceptual home, distinct from `web/`'s own app code.
 `scripts/dispersion/` is a separate, standalone side-tool — a DefiLlama-derived
 cross-sectional read, explicitly not the gold-standard measurement; it shares
-no code or files with `scripts/sqrtk/`.
+no code or files with `automation/sqrtk/`.
 
 `docs/decisions.md` is the authoritative design record (D1–D26+; several
 early entries are marked SUPERSEDED — always check headers, and D26 is
@@ -88,28 +92,48 @@ new version/commit is expected, not a rule violation.
 
 ## Commands
 
-**`scripts/sqrtk/` (Python 3.9+, standard library only — no `pip install`):**
-the active toolkit. Full usage in `scripts/sqrtk/SQRTK_RUNBOOK.md`.
+**`automation/sqrtk/` (Python 3.9+, standard library only — except
+`fetch_snapshots.py`/`migrate_snapshots_gap.py`, which need `psycopg` for
+their own DB read; install into a venv, never system Python — see
+`requirements-db.txt`):** the active toolkit. Full usage in
+`automation/sqrtk/SQRTK_RUNBOOK.md`.
 ```bash
-cd scripts/sqrtk
-python3 sqrtk_snapshot.py selftest   # offline, no network — run before anything else
-python3 mock_run.py                  # offline end-to-end mock of the deep-snapshot tool
+cd automation/sqrtk
+python3 selftest.py                  # offline, no network — run before anything else
+python3 mock_wingriders.py           # offline end-to-end mock: WingRiders-shaped fixture
 python3 mock_minswap.py              # offline mock: Minswap-specific datum/NFT paths
 python3 mock_enumerate.py            # offline dry-run of enumerate_minswap.py
-python3 mock_tick.py                 # offline end-to-end mock of the periodic collector
-python3 enumerate_minswap.py --top 60 --out pools.json      # build/extend the pool list
-python3 enumerate_wingriders.py --top 40 --out pools.json   # merges, never overwrites
-python3 sqrtk_snapshot.py measure --pools pools.json --out sqrtk.csv --days 7,14,30,60
-python3 sqrtk_tick.py --pools pools.json --out sqrtk.csv    # weekly: one current-state
-                                                              # reading per pool, appended
+python3 mock_fetch_db.py             # offline mock: fetch_snapshots.py's own orchestration
+python3 enumerate_minswap.py --top 20 --out pools.json      # build/extend the pool list
+# enumerate_wingriders.py still works the same way (merges, never overwrites)
+# but WingRiders tracking is currently deferred -- pools.json is Minswap-only,
+# top 20 by TVL, as of the 2026-08-01 cleanup. Don't run it without deciding
+# to resume tracking that venue. New pools.json entries still need a (currently
+# manual) sync into the `pools` DB table -- fetch_snapshots.py reads `pools`,
+# never pools.json.
+python3 discover_venue_datum.py --pools pools.json --pool <label>   # onboarding
+                                                                     # a NEW VENUE only
+python3 -m venv .venv && .venv/bin/pip install -r requirements-db.txt   # once
+.venv/bin/python3 fetch_snapshots.py --out /tmp/run.csv   # the recurring pipeline:
+                                                            # reads `pools` +
+                                                            # pool_snapshots (DB),
+                                                            # writes an ephemeral CSV
 ```
-Needs `scripts/sqrtk/.env` (gitignored) with `BLOCKFROST_PROJECT_ID` and
-`BLOCKFROST_BASE_URL` — mainnet, not preprod.
+Needs `automation/sqrtk/.env` (gitignored) with `BLOCKFROST_PROJECT_ID`,
+`BLOCKFROST_BASE_URL` — mainnet, not preprod — and, for
+`fetch_snapshots.py`/`migrate_snapshots_gap.py` only, `DATABASE_URL`.
+
+Then, in `web/`: `node scripts/ingest-snapshots.mts --input <path>` loads
+the CSV into `pool_snapshots`, and `node scripts/refresh-minswap-readings.mts`
+recomputes `current_readings` from it — fresh, from two snapshots each run,
+not copied from a single precomputed row (see `pool_snapshots`' own doc
+comment in `web/src/db/schema.ts` for why). No scheduler wires these three
+steps together yet.
 
 `scripts/dispersion/` holds one standalone script (`defillama-dispersion-script.py`,
 run the same way: `cd scripts/dispersion && python3 defillama-dispersion-script.py`)
 — a fast DefiLlama-derived cross-sectional read, not the gold-standard
-measurement and not wired to anything in `scripts/sqrtk/`.
+measurement and not wired to anything in `automation/sqrtk/`.
 
 **Everything else (validators, executor, web) does not exist yet for the
 current direction.** For the archived app's own toolchain (Aiken, Node/TS —
@@ -140,19 +164,27 @@ redeemer set, no invariant list exist yet. What's real:
   sequencing decision (cross-DEX aggregator + zap-in first, ahead of any
   strategy automation).
 - **`web/`** — scaffolded (D29): Next.js (App Router, TypeScript), Tailwind +
-  shadcn/ui, TanStack Query/Table + Server Components (no Redux). Reads
-  `scripts/sqrtk/pools.json`/`sqrtk.csv` directly — no API/DB layer yet, to
-  conserve Blockfrost usage. First slice per D28 (pool discovery/comparison)
-  not yet built — only the verified scaffold exists so far.
-- **`scripts/`** — the working toolkit. `sqrtk_snapshot.py` does deep,
-  multi-window historical measurement (onboarding a pool/venue, or an
-  occasional deep-dive); `sqrtk_tick.py` is the periodic (weekly) collector,
-  one current-state reading per pool appended to the same growing
-  `sqrtk.csv`; `enumerate_minswap.py`/`enumerate_wingriders.py` build and
-  extend `pools.json` from live chain enumeration, never overwriting what's
-  already known. All of it mainnet-verified, not just unit-tested — see the
-  runbook for the actual evidence (100-pool clean runs, zero correctness
-  violations).
+  shadcn/ui, TanStack Query/Table + Server Components (no Redux). The pool
+  comparison page now reads from a real Postgres DB (`current_readings`),
+  fed by `automation/`'s pipeline — see `web/README.md` for the current
+  data-flow state; this bullet stays high-level on purpose.
+- **`automation/sqrtk/`** — the working measurement toolkit (moved out of
+  `scripts/` — see Commands above). `sqrtk_core.py` holds the shared,
+  mainnet-verified chain-reading primitives (Blockfrost client, the
+  binary-search walk into transaction history, per-venue reserve/LP-supply
+  extraction, the √k/LP computation) — see the runbook for the actual
+  evidence (100-pool clean runs, zero correctness violations).
+  `fetch_snapshots.py` is the recurring pipeline: reads the `pools` registry
+  and each pool's latest known state from Postgres, backfills N days for a
+  brand-new pool or takes one fresh reading for an existing one (after a
+  cheap freshness pre-check that costs zero Blockfrost calls), and writes
+  flat point-in-time snapshot rows — no growth/APR baked in; that's computed
+  fresh at display time (see `web/src/db/schema.ts`'s `pool_snapshots`
+  comment for why). `discover_venue_datum.py` is the separate, rare, manual
+  tool for onboarding a brand-new *venue* (confirming datum field paths).
+  `enumerate_minswap.py`/`enumerate_wingriders.py` build and extend
+  `pools.json` from live chain enumeration, never overwriting what's already
+  known.
 - **`reference/`** — vendored read-only material: Minswap AMM V2 spec,
   formula.md, farm docs, a full @minswap/sdk snapshot (`reference/sdk`,
   pinned commit in `VENDORED_COMMIT`). Still relevant — the √k model reads

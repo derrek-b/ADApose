@@ -28,20 +28,21 @@ preserved, unedited, in `legacy/` — see `legacy/README.md` — in case
 auto-compounding becomes viable again later.
 
 **Status:** the on-chain/off-chain architecture for the current direction is
-not yet designed. What exists and works today is `scripts/` — a toolkit that
-measures √k fee-accrual directly on-chain, mainnet-verified across Minswap
-V2 and WingRiders V2. DraperU x Cardano Genesis Hacker House application
-(July 2026).
+not yet designed. What exists and works today is `automation/sqrtk/` — a
+toolkit that measures √k fee-accrual directly on-chain, mainnet-verified
+across Minswap V2 and WingRiders V2. DraperU x Cardano Genesis Hacker House
+application (July 2026).
 
 ## Layout
 
 | Dir | What |
 |---|---|
-| `scripts/` | **Active.** `scripts/sqrtk/` — √k measurement toolkit: deep snapshots, a periodic weekly collector, pool enumeration. Python, stdlib only. Start with `scripts/sqrtk/SQRTK_RUNBOOK.md`. `scripts/dispersion/` — a standalone DefiLlama-derived cross-sectional read, not the gold-standard measurement |
+| `automation/` | **Active.** `automation/sqrtk/` — √k measurement toolkit: deep snapshots, a periodic collector, pool enumeration. Python, stdlib only. Start with `automation/sqrtk/SQRTK_RUNBOOK.md`. Moved out of `scripts/` so the whole data-refresh pipeline (Python measurement + Node ingest/refresh + the scheduling orchestrator) has one home, distinct from `web/`'s own app code |
+| `scripts/` | `scripts/dispersion/` — a standalone DefiLlama-derived cross-sectional read, not the gold-standard measurement. (`scripts/sqrtk/` moved to `automation/sqrtk/`) |
 | `legacy/` | The archived auto-compounding vault design — validator, executor scaffold, per-action workflow docs. Frozen, not maintained; see `legacy/README.md` before assuming anything in it is current |
 | `reference/` | Vendored Minswap + WingRiders material: AMM V2 spec, formula.md, farm docs, SDK snapshots — still relevant, the current direction reads the same pools |
 | `docs/` | Design decisions (`decisions.md`, one continuous history — never split when `legacy/` was carved out), the √k brief, parked ideas for the current direction |
-| `web/` | Scaffolded (D29): Next.js + Tailwind/shadcn + TanStack, reading `scripts/sqrtk/` data directly, no API/DB layer yet. First slice: pool discovery/comparison, no wallet/positions yet (D28) — no actual pages built yet beyond the scaffold |
+| `web/` | Scaffolded (D29): Next.js + Tailwind/shadcn + TanStack. Pool comparison page now reads from a real Postgres DB (`current_readings`), fed by `automation/`'s pipeline — see `web/README.md` for the current data-flow state |
 
 Nothing named `validators/` or `executor/` exists at the repo root right now
 — both moved to `legacy/` whole. If you're looking for them expecting the
@@ -50,12 +51,13 @@ old app, start at `legacy/README.md`.
 ## Working today
 
 ```bash
-cd scripts/sqrtk
-python3 sqrtk_snapshot.py selftest && python3 mock_run.py && python3 mock_tick.py
+cd automation/sqrtk
+python3 selftest.py && python3 mock_wingriders.py && python3 mock_minswap.py \
+  && python3 mock_enumerate.py && python3 mock_fetch_db.py
 ```
-All three offline, no key, no network — the mandatory pre-flight before
-spending a single API call. Then `scripts/sqrtk/SQRTK_RUNBOOK.md` for the real
-enumerate/measure/tick workflow against mainnet.
+All five offline, no key, no network — the mandatory pre-flight before
+spending a single API call. Then `automation/sqrtk/SQRTK_RUNBOOK.md` for the
+real enumerate/fetch workflow against mainnet.
 
 ## Stack (for `scripts/`, the only thing currently built)
 

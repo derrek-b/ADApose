@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { ConnectWalletButton } from "@/components/wallet/connect-wallet-button-dynamic";
 
 export function Header() {
   return (
@@ -17,9 +17,7 @@ export function Header() {
           <span className="text-brand-crimson">ADA</span>pose
         </span>
       </Link>
-      <Button variant="outline" disabled>
-        Connect Wallet
-      </Button>
+      <ConnectWalletButton />
     </header>
   );
 }

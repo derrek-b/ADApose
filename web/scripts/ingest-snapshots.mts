@@ -1,6 +1,7 @@
 /**
- * Loads a flat snapshot CSV (as produced by automation/sqrtk/fetch_snapshots.py
- * or migrate_snapshots_gap.py) into the `pool_snapshots` table. Safe to
+ * Loads a flat snapshot CSV (as produced by automation/sqrtk/fetch_snapshots.py,
+ * the recurring pipeline and also the manual deepen/catch-up tool via a
+ * bigger --target-days) into the `pool_snapshots` table. Safe to
  * re-run anytime — ON CONFLICT DO NOTHING against
  * pool_snapshots_unique_reading skips rows already ingested rather than
  * duplicating them (this matters every day going forward, not just during

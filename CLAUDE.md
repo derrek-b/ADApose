@@ -93,10 +93,9 @@ new version/commit is expected, not a rule violation.
 ## Commands
 
 **`automation/sqrtk/` (Python 3.9+, standard library only — except
-`fetch_snapshots.py`/`migrate_snapshots_gap.py`, which need `psycopg` for
-their own DB read; install into a venv, never system Python — see
-`requirements-db.txt`):** the active toolkit. Full usage in
-`automation/sqrtk/SQRTK_RUNBOOK.md`.
+`fetch_snapshots.py`, which needs `psycopg` for its own DB read; install
+into a venv, never system Python — see `requirements-db.txt`):** the active
+toolkit. Full usage in `automation/sqrtk/SQRTK_RUNBOOK.md`.
 ```bash
 cd automation/sqrtk
 python3 selftest.py                  # offline, no network — run before anything else
@@ -117,11 +116,21 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements-db.txt   # once
 .venv/bin/python3 fetch_snapshots.py --out /tmp/run.csv   # the recurring pipeline:
                                                             # reads `pools` +
                                                             # pool_snapshots (DB),
-                                                            # writes an ephemeral CSV
+                                                            # writes an ephemeral CSV.
+                                                            # Targets are calendar-
+                                                            # anchored (UTC midnight),
+                                                            # not now-relative -- see
+                                                            # docs/decisions.md's
+                                                            # 2026-08-03 D30 addenda.
+.venv/bin/python3 fetch_snapshots.py --out /tmp/deep.csv --target-days 35
+                                                            # deepen/resume an existing
+                                                            # pool's history -- cheap,
+                                                            # already-covered days cost
+                                                            # zero Blockfrost calls
 ```
 Needs `automation/sqrtk/.env` (gitignored) with `BLOCKFROST_PROJECT_ID`,
-`BLOCKFROST_BASE_URL` — mainnet, not preprod — and, for
-`fetch_snapshots.py`/`migrate_snapshots_gap.py` only, `DATABASE_URL`.
+`BLOCKFROST_BASE_URL` — mainnet, not preprod — and, for `fetch_snapshots.py`
+only, `DATABASE_URL`.
 
 Then, in `web/`: `node scripts/ingest-snapshots.mts --input <path>` loads
 the CSV into `pool_snapshots`, and `node scripts/refresh-minswap-readings.mts`
@@ -178,14 +187,19 @@ redeemer set, no invariant list exist yet. What's real:
   binary-search walk into transaction history, per-venue reserve/LP-supply
   extraction, the √k/LP computation) — see the runbook for the actual
   evidence (100-pool clean runs, zero correctness violations).
-  `fetch_snapshots.py` is the recurring pipeline: reads the `pools` registry
-  and each pool's latest known state from Postgres, backfills N days for a
-  brand-new pool or takes one fresh reading for an existing one (after a
-  cheap freshness pre-check that costs zero Blockfrost calls), and writes
-  flat point-in-time snapshot rows — no growth/APR baked in; that's computed
-  fresh at display time (see `web/src/db/schema.ts`'s `pool_snapshots`
-  comment for why). `discover_venue_datum.py` is the separate, rare, manual
-  tool for onboarding a brand-new *venue* (confirming datum field paths).
+  `fetch_snapshots.py` is the recurring pipeline (and also the manual
+  deepen/catch-up tool, via a bigger `--target-days`): reads the `pools`
+  registry, each pool's latest known state, and which calendar days already
+  have a snapshot from Postgres, backfills `--new-pool-days` for a
+  brand-new pool or tops up whichever of `--target-days`' UTC-midnight-
+  anchored days aren't already covered for an existing one (a day already on
+  file costs zero Blockfrost calls), and writes flat point-in-time snapshot
+  rows — no growth/APR baked in; that's computed fresh at display time (see
+  `web/src/db/schema.ts`'s `pool_snapshots` comment for why). Targets are
+  calendar-anchored, not relative to whenever the script happens to run —
+  `docs/decisions.md`'s 2026-08-03 D30 addenda. `discover_venue_datum.py` is
+  the separate, rare, manual tool for onboarding a brand-new *venue*
+  (confirming datum field paths).
   `enumerate_minswap.py`/`enumerate_wingriders.py` build and extend
   `pools.json` from live chain enumeration, never overwriting what's already
   known.

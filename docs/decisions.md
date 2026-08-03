@@ -1856,3 +1856,93 @@ case, since real multi-wallet testing (Eternl + Lace both installed) made a
 stub actively block testing — the same "don't build a throwaway now"
 reasoning that also decided against hand-rolling an address decoder in
 favor of using `@spacebudz/lucid` directly for that too.
+
+## D31 · fetch_snapshots.py + migrate_snapshots_gap.py unified — calendar-anchored targets — 2026-08-03
+
+**Decision:** merged into one script (`fetch_snapshots.py`;
+`migrate_snapshots_gap.py` deleted). Targets are now calendar-anchored to
+UTC midnight (`today_midnight = (now // DAY) * DAY`), not relative to
+whenever the script happens to run. Two day-count flags replace the old
+`--backfill-days`: `--target-days` (default 7, an already-tracked pool) and
+`--new-pool-days` (default 35, a brand-new pool).
+
+**Why now, not a design nicety:** checking the DB directly (this session)
+found a real ~1.7-day gap — no fetch had run since 2026-08-02. Diagnosing
+the catch-up surfaced the actual problem: both scripts computed targets as
+`now - i*DAY`, so the displayed APR (which diffs the *latest* snapshot
+against an *N-days-ago* one) drifted with whatever time a human happened to
+invoke the script — one day's "7D APR" measured over 6.5 days, the next
+over 8, independent of the chain itself.
+
+**Two alternatives considered and explicitly rejected:**
+- A hard cutoff bounding how far back a target is allowed to search —
+  rejected: the existing D30 floor-only tolerance bands and `*`-marker/
+  tooltip UI already represent "the nearest real transaction was further
+  back than hoped" honestly; a hard bound would just create data gaps for
+  quiet pools with no accuracy benefit.
+- A forward-looking window around the anchor (accepting a transaction
+  slightly after the boundary, to reduce timestamp jitter) — rejected on a
+  specific technical ground, not just preference: sqrt(k)/LP is
+  monotonically non-decreasing by design (rises only from fees), so
+  accepting a post-boundary transaction to represent "state as of the
+  boundary" would systematically bias the reported value upward — a real
+  accuracy bias, not just imprecise timing. Strictly backward "at or
+  before" search has zero such bias: nothing about a pool changes between
+  two consecutive pool-touching transactions, so the state at the newest
+  transaction before an instant *is* the true state at that instant,
+  exactly.
+
+**New "covered days" mechanism** (`load_covered_days_from_db`) replaces the
+old flat `0.5-day` freshness literal, applied to both branches: a day
+already recorded for a pool costs zero Blockfrost calls, checked per
+calendar day rather than per pool. This is what makes reusing
+`--target-days` for a large manual catch-up (`migrate_snapshots_gap.py`'s
+old job) cheap instead of an unconditional rebuild — confirmed at scale: a
+`--target-days 35` run across 20 pools (720 nominal target-checks) cost
+1888 API calls, not a full rebuild's worth.
+
+**`--target-days` defaults to 7, not 1 or 0** — deliberately not sized for
+"spread" (a true daily steady state only needs today's one new point).
+Sized instead for the current operating reality: nothing schedules this
+yet, a human runs it manually, and since asking for extra already-covered
+days is free, a 7-day default means "run it at least once a week" is a
+safe assumption with nothing silently missed — today's own gap is exactly
+the failure mode a lower default would keep reproducing. Costs nothing
+extra once real scheduling exists.
+
+**`--new-pool-days` defaults to 35, not 30 or 31** — the D30 addendum's 30D
+APR tolerance band is `target=30, max=45`; 35 gives 5 candidate points
+inside that band instead of 1, so a single quiet stretch near day-30
+doesn't leave the 30D window with nothing valid to compute from.
+
+**A real bug found and fixed during verification, not during design:** the
+"decreasing reading" flag-but-still-write check assumed the oldest
+newly-fetched row always comes chronologically right after the DB's
+last-known value. False with calendar-anchored gap-filling — a covered day
+in between can get filtered out of the fetch list while an older,
+still-uncovered day still needs fetching, landing the oldest new row
+*before* `last` in real time, not after. Surfaced as 5 false "sqrt(k)/LP
+FELL" flags on the actual mainnet dry run (0.003%–0.041% drops, small
+enough to be suspicious rather than an obvious real anomaly) — fixed by
+merging `last` into the full chronological sequence and checking real
+consecutive pairs, not assumed ones. Mock coverage for this class of bug
+was blind to it: the existing synthetic `last` values (1.0, 999) were
+chosen to sort as unambiguously first/last regardless of position, never
+testing a `last` that sits genuinely *in the middle* of a fetch range. A
+new regression case uses a realistic (probed, not synthetic) value
+specifically to close that hole.
+
+**Verified against real mainnet data, not just mocks:** the actual gap
+closed (stalest pool went from ~1.7-2 days old to ~1-1.15 days, consistent
+with genuinely quiet pools resolving to their real nearest transaction, not
+a stuck gap); confirmed idempotent at the data level (re-running same-day
+can still cost Blockfrost calls on a pool with no fresh transaction yet —
+an accepted trade-off, not a bug, since the walk-back for an uncovered
+"today" bucket can resolve to the same already-known older transaction
+until real new activity occurs — but produces zero duplicate rows,
+confirmed via the ingest script's own "already present" count); the
+`--new-pool-days`-scale deepen path added 78 genuinely new historical rows
+across 20 pools.
+
+Full mechanism doc: `automation/sqrtk/SQRTK_RUNBOOK.md` section 7
+(rewritten). Toolkit: same file, unchanged path.

@@ -5,6 +5,32 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### `fetch_snapshots.py` unified with `migrate_snapshots_gap.py` — calendar-anchored targets (2026-08-03)
+
+- **Diagnosed a real ~1.7-day data gap and a design bug behind it:** targets
+  were computed relative to whenever the script happened to run, so the
+  displayed APR's actual measured window drifted independent of the chain.
+  Fixed by calendar-anchoring every target to UTC midnight. See D31.
+- **Two scripts merged into one:** `migrate_snapshots_gap.py` deleted; its
+  old "deepen an existing pool" job is now just `fetch_snapshots.py
+  --target-days <bigger N>`, made cheap by a new per-calendar-day "covered
+  days" check (`load_covered_days_from_db`) that replaces the old flat
+  0.5-day freshness literal.
+- New flags: `--target-days` (default 7) and `--new-pool-days` (default 35,
+  replacing `--backfill-days`).
+- **A real bug found via the actual mainnet dry run, not mocks:** the
+  decreasing-value check wrongly assumed the oldest newly-fetched row is
+  always the DB's last-known value's immediate successor — produced 5
+  false "FELL" flags before being fixed (merge-by-timestamp instead of
+  assumed adjacency). New regression test added using realistic probed
+  values, since the existing mocks' synthetic values happened to mask this
+  class of bug.
+- `mock_fetch_db.py` rewritten (8 cases, 2 new); `SQRTK_RUNBOOK.md` and
+  `CLAUDE.md` updated to match.
+- Real-data verification: gap closed, idempotency confirmed at the data
+  level, a 35-day manual deepen added 78 new historical rows across 20
+  pools at 1888 API calls.
+
 ### Wallet connection — CIP-30 discovery, modal picker, `@spacebudz/lucid`, persistence (2026-08-03)
 
 - Header's "Connect Wallet" button wired end-to-end: a modal wallet picker

@@ -1,6 +1,6 @@
 # √k Snapshot — Developer Runbook
 
-ADApose Labs, Inc. · scripts: `sqrtk_core.py` (shared primitives), `fetch_snapshots.py` (the recurring, DB-driven pipeline), `discover_venue_datum.py` (onboarding a new venue) · last updated 2026-08-02
+ADApose Labs, Inc. · scripts: `sqrtk_core.py` (shared primitives), `fetch_snapshots.py` (the recurring, DB-driven pipeline — also handles a manual deepen/catch-up via `--target-days`), `discover_venue_datum.py` (onboarding a new venue) · last updated 2026-08-03
 
 ---
 
@@ -43,11 +43,11 @@ fee_apr = ((sqrt_k_per_lp[t1] / sqrt_k_per_lp[t0]) ** (365/days) - 1) × 100
 ## 2. Prerequisites
 
 Python 3.9 or newer. **Standard library only** (`urllib`, `json`, `csv`,
-`decimal`, `bisect`, `dataclasses`) for everything except `fetch_snapshots.py`
-and `migrate_snapshots_gap.py`, which read the `pools` registry and each
-pool's latest state from Postgres and need `psycopg` for that — install it
-into a venv, never system Python: `python3 -m venv .venv && .venv/bin/pip
-install -r requirements-db.txt`. Every other file in this toolkit
+`decimal`, `bisect`, `dataclasses`) for everything except `fetch_snapshots.py`,
+which reads the `pools` registry and each pool's latest state from Postgres
+and needs `psycopg` for that — install it into a venv, never system Python:
+`python3 -m venv .venv && .venv/bin/pip install -r requirements-db.txt`.
+Every other file in this toolkit
 (`sqrtk_core.py`, `discover_venue_datum.py`, `enumerate_*.py`, `selftest.py`,
 all `mock_*.py`) stays dependency-free.
 
@@ -68,10 +68,10 @@ BLOCKFROST_PROJECT_ID=mainnet...
 BLOCKFROST_BASE_URL=https://cardano-mainnet.blockfrost.io/api/v0
 ```
 
-`fetch_snapshots.py` and `migrate_snapshots_gap.py` additionally need
-`DATABASE_URL` in the same `.env` — read-only in principle (they only ever
-issue SELECTs), though that's enforced by the code today, not yet by the
-credential itself; there's no separate read-only Postgres role set up.
+`fetch_snapshots.py` additionally needs `DATABASE_URL` in the same `.env` —
+read-only in principle (it only ever issues SELECTs), though that's enforced
+by the code today, not yet by the credential itself; there's no separate
+read-only Postgres role set up.
 
 The `.env` stays on the machine that runs the script. The key is never printed,
 never written to the CSV, and is stripped from HTTP error text before any
@@ -134,16 +134,22 @@ stray airdropped token alongside a real pair, duplicate asset-name labels,
 a decoy output with no MSP NFT, and a listing longer than `--top`. Untouched
 by the snapshot-model change apart from a one-line import fix.
 
-`mock_fetch_db.py` (replaces `mock_tick.py`) covers `fetch_snapshots.cmd_fetch`'s
-own orchestration, as distinct from chain-reading correctness: no prior
-snapshot triggers a backfill; a prior snapshot fresher than 0.5 days skips
-with exactly one API call total (the chain-tip fetch — the freshness
-pre-check is a pure timestamp comparison against the DB, costing nothing);
-an unverified venue is skipped before any per-pool call; a fresh reading
-below the DB's latest known value is still written, flagged as a problem.
-It monkeypatches `sqrtk_core.Env`/`Blockfrost` plus
-`fetch_snapshots.load_database_url`/`psycopg.connect`/`load_pools_from_db`/
-`load_latest_snapshots_from_db`, so no real DB connection or `.env` is ever
+`mock_fetch_db.py` covers `fetch_snapshots.cmd_fetch`'s own orchestration, as
+distinct from chain-reading correctness: no prior snapshot triggers a
+new-pool backfill (`--new-pool-days`); a routine pool whose every requested
+calendar day already has a `pool_snapshots` row skips with exactly one API
+call total (the chain-tip fetch — the covered-days check is a pure DB read,
+no Blockfrost calls); partial coverage (some requested days already have a
+row, some don't) fetches only the genuinely-missing ones; an unverified
+venue is skipped before any covered-days work; a fresh reading below the
+DB's latest known value is still written, flagged as a problem; a large
+manual `--target-days` override against a pool with some days already
+covered still only walks the missing ones (the retired
+`migrate_snapshots_gap.py`'s old "deepen an existing pool" job, now just a
+bigger flag value against this same script). It monkeypatches
+`sqrtk_core.Env`/`Blockfrost` plus `fetch_snapshots.load_database_url`/
+`psycopg.connect`/`load_pools_from_db`/`load_latest_snapshots_from_db`/
+`load_covered_days_from_db`, so no real DB connection or `.env` is ever
 touched, and reuses `mock_wingriders.py`'s fixture by import rather than
 duplicating it.
 
@@ -262,7 +268,10 @@ not crash, it does not look absurd, and it is off by 16%.
 ## 7. Step 3 — `fetch_snapshots.py`, the recurring pipeline
 
 ```bash
-.venv/bin/python3 fetch_snapshots.py --out /tmp/run.csv --backfill-days 7
+.venv/bin/python3 fetch_snapshots.py --out /tmp/run.csv
+# deepen/resume an existing pool's history (cheap even at a large N -- see
+# the covered-days mechanism below):
+.venv/bin/python3 fetch_snapshots.py --out /tmp/deep.csv --target-days 35
 ```
 
 **One tool now, not two.** The old design split this into `measure` (a
@@ -273,7 +282,11 @@ different row shapes (a comparison-pair: `from_ts`/`to_ts`/precomputed
 an ongoing daily cadence: a display layer picked whichever single row's own
 window was "closest to nominal 7/30 days," but a daily diff only ever
 produces ~1-day-window rows, so the picked row — and the displayed APR —
-would freeze forever after the first sweep and never update again.
+would freeze forever after the first sweep and never update again. A later
+design (`migrate_snapshots_gap.py`, since folded back into this file — see
+below) split things a second time, for a different reason: a one-time
+"rebuild N days of density" tool separate from the routine tick. Calendar-
+anchoring (next paragraph) removed the reason for that split too.
 
 The fix: store bare point-in-time snapshots instead (pool, timestamp,
 `sqrt(k)/LP`, reserves, LP supply — no comparison baked in at all). Any
@@ -282,25 +295,51 @@ snapshots and computing growth between them on the spot (see
 `web/src/db/schema.ts`'s `pool_snapshots` comment). That collapses onboarding
 and ongoing collection into one function, `collect_snapshots(bf, pool,
 venue, targets, source, problems)`, called with a different `targets` list
-depending on the case:
+depending on the case.
 
-- **A pool with no prior snapshot at all** — `fetch_snapshots.py` backfills
-  `--backfill-days` (default 7) worth of *spread*: daily snapshots at offsets
-  0 through N days back from now (N+1 points, so the oldest point is
-  genuinely N days old, not N−1 — a fencepost bug fixed 2026-08-01), same
-  idea `measure`'s lookback sweep served, just producing N+1 separate point
-  rows instead of comparison-pairs sharing one "now" endpoint.
-- **A pool with a prior snapshot, checked first, for free** — before any
-  Blockfrost call at all, `now` (fetched once for the whole run) is compared
-  against the pool's last known snapshot timestamp (read from Postgres, not
-  a CSV). If less than 0.5 days have passed, the pool is skipped entirely —
-  `now` can only ever be ≥ any state a real read would find, so this is a
-  *sufficient* condition, not a heuristic: no on-chain read could change the
-  answer. This is strictly cheaper than the old design, where the
-  "nothing new" case still cost the full per-pool read before discovering
-  there was nothing to write.
-- **Otherwise** — one current-state read, diffed against the last known
-  value purely to flag (not gate) a decreasing reading.
+**Targets are calendar-anchored to UTC midnight**, not relative to whatever
+moment the script happens to run: `today_midnight = (now // DAY) * DAY`.
+Why this matters: the displayed APR diffs the *latest* snapshot against an
+*N-days-ago* one, so if "latest" drifts around with whatever time a human
+(or eventually a cron) happened to invoke this, the real measured window
+drifts with it too — one day's "7D APR" might really be measured over 6.5
+days, the next over 8, independent of anything about the chain itself. See
+`docs/decisions.md`'s 2026-08-03 D30 addendum for the full reasoning,
+including why the walk stays strictly backward ("at or before" the target,
+never forward, and no hard cutoff on how far back it's allowed to search) —
+`sqrt(k)/LP` is monotonically non-decreasing by design, so accepting a
+transaction from *after* the nominal boundary would systematically bias the
+reported value upward, not just measure it imprecisely.
+
+- **A pool with no prior snapshot at all** — backfilled with `--new-pool-days`
+  (default 35, replacing the old `--backfill-days`) worth of calendar-
+  anchored *spread*: daily snapshots at offsets 0 through N days back from
+  today's midnight (N+1 points, so the oldest point is genuinely N days old,
+  not N−1 — a fencepost bug fixed 2026-08-01). 35 rather than a bare 30 is
+  deliberate: the D30 addendum's 30D APR tolerance band is `target=30,
+  max=45`, and having 5 candidate points inside that band instead of 1 means
+  a single quiet stretch near day-30 doesn't leave the 30D window empty.
+- **A pool with a prior snapshot** — checked per calendar day, not per pool:
+  a new "covered days" query (`load_covered_days_from_db`) loads, in one
+  round trip, every UTC day that already has a `pool_snapshots` row for any
+  pool in the registry. Each pool's target list (`--target-days`, default 7)
+  is filtered down to only the days NOT already covered before any
+  Blockfrost call happens — a day already on file costs nothing. This
+  replaces the old flat "skip if the last reading is under 0.5 days old"
+  check, and it's what makes a large manual `--target-days` override (the
+  retired `migrate_snapshots_gap.py`'s old job) cheap: only the genuinely-
+  missing days get walked, not a full unconditional rebuild.
+- **Why `--target-days` defaults to 7, not 1:** a true daily steady state
+  only ever needs *today's* one new point — yesterday's is already covered
+  by yesterday's run. 7 is sized for right now, while nothing schedules this
+  yet and a human runs it manually: since asking for extra already-covered
+  days is free, a 7-day default means "run it at least once a week" is a
+  safe operating assumption, with nothing silently missed, and no need to
+  remember exactly when it last ran. Once real scheduling exists and it
+  runs truly daily, this costs nothing extra and doesn't need lowering.
+- **Whichever branch fires** — every newly-fetched row is compared against
+  the last known value (oldest new row vs. the DB's prior reading) purely to
+  flag (not gate) a decreasing reading.
 
 The actual finding/reading mechanics are unchanged from the old `measure`:
 for each target timestamp, the newest transaction touching the pool's
@@ -339,10 +378,11 @@ Per pool, roughly:
 Observed, not estimated (from the old `measure`, same underlying mechanics):
 a 100-pool run (60 Minswap V2 + 40 WingRiders V2, 30 Jul 2026) used
 2,545 + 1,364 = 3,909 calls for 371 rows — roughly 35–40 requests per pool
-for up to five target points. A routine tick against an already-known,
-already-fresh-enough pool costs a small fraction of that (one page lookup,
-one tx-UTxOs fetch, a datum fetch if needed — call it 3–4 requests), or
-literally zero extra calls if the freshness pre-check above skips it.
+for up to five target points. A routine tick against an already-known pool
+whose target day(s) aren't yet covered costs a small fraction of that per
+day (one page lookup, one tx-UTxOs fetch, a datum fetch if needed — call it
+3–4 requests), or literally zero extra calls per day the covered-days check
+above already has on file.
 
 ### Output columns (flat CSV, one row per snapshot)
 
@@ -354,7 +394,7 @@ literally zero extra calls if the freshness pre-check above skips it.
 | `sqrtk_per_lp` | The measured invariant, 18 decimal places. **No `growth_pct`/`fee_apr_pct` here anymore** — those are computed fresh from a pair of snapshots at display time, never stored per-row |
 | `reserve_a`, `reserve_b`, `lp_supply` | Raw state at `ts`, for independent reconciliation |
 | `venue_verified` | Always `True` for any row that exists — an unverified venue produces no rows at all, so this column is provenance, not something to filter on |
-| `source` | `backfill` (a new pool's initial density, or the one-time historical gap-fill), `live` (a routine tick against an already-known pool), or `migration` (carried over from the old comparison-pair `measurements` table during the cutover — see `web/scripts/migrate-measurements-to-pool-snapshots.mts`) |
+| `source` | `backfill` (a brand-new pool's initial `--new-pool-days` depth), `live` (any already-known pool's fetch — the routine default *or* a large manual `--target-days` deepen, both use this same branch/tag), or `migration` (carried over from the old comparison-pair `measurements` table during the cutover — see `web/scripts/migrate-measurements-to-pool-snapshots.mts`) |
 
 Several target days on a quiet pool can land on the same transaction;
 `collect_snapshots` de-duplicates by transaction hash *within one call*
@@ -400,7 +440,7 @@ WingRiders V2 stableswap and Splash's `BalanceFnPool` / `StableFnPool` /
 | `sqrt(k)/LP FELL x% between ...` | The invariant went backwards | See above. Do not use the APR |
 | `no pool output in <tx>` | NFT moved but nothing landed at the configured credential | Check `script_hash` is the payment credential, not the full address |
 | `non-positive reserve after adjustment` | Over-subtraction | `min_pool_ada` wrong, or a treasury pair counted twice |
-| `LP history empty at this timestamp` | Pool younger than the lookback point | Shorten `--days` |
+| `LP history empty at this timestamp` | Pool younger than the lookback point | Shorten `--target-days`/`--new-pool-days` |
 | `history exceeds 50k events in the lookback window` | Safety cap hit | LP supply is unreliable; raise the cap deliberately or shorten the window |
 
 Exit code is 0 only when no problems were flagged at all.

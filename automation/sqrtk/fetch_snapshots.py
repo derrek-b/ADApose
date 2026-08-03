@@ -1,13 +1,36 @@
 #!/usr/bin/env python3
 """
-ADApose Labs -- the recurring, DB-driven measurement pipeline. Replaces
-sqrtk_tick_db.py (which reused sqrtk_tick.py's tick()/bootstrap(), both of
-which produced the now-retired comparison-pair row shape). This file reads
-the pool registry and each pool's latest known state from Postgres
-(read-only), calls sqrtk_core.py's chain-reading primitives directly, and
-writes flat point-in-time snapshot rows -- no growth/APR computed here at
-all; that's the display layer's job (web/scripts/refresh-minswap-readings.mts),
-computed fresh from two snapshots each time it runs.
+ADApose Labs -- the recurring, DB-driven measurement pipeline. Also absorbs
+migrate_snapshots_gap.py's old job (deepen/resume an existing pool's
+history) -- that's now just `--target-days <bigger N>` against this same
+script, made cheap by the covered-day skip below.
+
+Targets are calendar-anchored to UTC midnight (today_midnight = (now //
+DAY) * DAY), not relative to whatever moment the script happens to run.
+Why: the displayed APR diffs the latest snapshot against an N-days-ago one
+(web/scripts/refresh-minswap-readings.mts's pickWindow), so if "latest"
+drifts around with whatever time a human happened to invoke this, the real
+measured window drifts with it too -- independent of anything about the
+chain itself. See docs/decisions.md's 2026-08-03 D30 addendum.
+
+Search stays strictly backward ("at or before" the target, never forward)
+-- decided deliberately, not an oversight: sqrt(k)/LP is monotonically
+non-decreasing by design (rises only from fees), so accepting a
+transaction from *after* the nominal boundary to represent "state as of
+the boundary" would systematically bias the reported value upward, not
+just measure it imprecisely. Nothing about a pool changes between two
+consecutive pool-touching transactions, so the state at the newest
+genuine transaction before an instant *is* the true state at that instant,
+exactly -- no forward window, no hard cutoff on how far back a target is
+allowed to search either (a quiet pool just means an honestly-longer
+measured window downstream, not a data gap).
+
+This file reads the pool registry, each pool's latest known state, and
+which calendar days are already covered from Postgres (read-only), calls
+sqrtk_core.py's chain-reading primitives directly, and writes flat
+point-in-time snapshot rows -- no growth/APR computed here at all; that's
+the display layer's job, computed fresh from two snapshots each time it
+runs.
 
 Python never writes to Postgres in this pipeline -- it emits an ephemeral
 CSV at a caller-supplied path, which web/scripts/ingest-snapshots.mts (the
@@ -31,6 +54,10 @@ requirements-db.txt.
 USAGE
 -----
     python3 fetch_snapshots.py --out /tmp/fetch_run.csv
+    # deepen/resume an existing pool's history (migrate_snapshots_gap.py's
+    # old job) -- cheap even at a large N, already-covered days cost
+    # nothing:
+    python3 fetch_snapshots.py --out /tmp/deep.csv --target-days 35
 """
 from __future__ import annotations
 
@@ -115,6 +142,35 @@ def load_latest_snapshots_from_db(conn) -> dict:
     }
 
 
+def load_covered_days_from_db(conn, since_ts: int) -> dict[str, set[int]]:
+    """
+    {track_asset: {day_start_unix, ...}} -- every UTC calendar day (as a
+    midnight-unix-timestamp bucket) that already has at least one
+    pool_snapshots row at or after since_ts, across every pool in one
+    query. Lets the per-pool target-day filter below skip any day we
+    already have without spending a Blockfrost call to rediscover it.
+
+    Sits alongside load_latest_snapshots_from_db, not a replacement for it:
+    that function's DISTINCT ON collapses each pool to its single newest
+    row (still needed separately for the brand-new-pool check and the
+    decreasing-value seed) and would lose every earlier row in the
+    lookback window this needs.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "select venue, track_asset, ts from pool_snapshots "
+            "where ts >= to_timestamp(%s)",
+            (since_ts,),
+        )
+        rows = cur.fetchall()
+    covered: dict[str, set[int]] = {}
+    for _venue, track_asset, ts in rows:
+        covered.setdefault(track_asset, set()).add(
+            (int(ts.timestamp()) // C.DAY) * C.DAY
+        )
+    return covered
+
+
 def collect_snapshots(bf: C.Blockfrost, pool: C.Pool, venue: C.Venue,
                        targets: list[int], source: str, problems: list,
                        verbose: bool = True) -> list[dict]:
@@ -132,14 +188,14 @@ def collect_snapshots(bf: C.Blockfrost, pool: C.Pool, venue: C.Venue,
     old cmd_measure used across its own lookback points.
 
     Returns one flat snapshot row dict per distinct state, tagged with
-    `source`. No growth/APR fields -- those are computed later, at display
-    time, from two snapshots' raw sqrtk_per_lp.
+    `source`, sorted ascending by ts. No growth/APR fields -- those are
+    computed later, at display time, from two snapshots' raw sqrtk_per_lp.
 
     One function serves every call site: a brand-new pool's backfill
-    (targets = N consecutive days back), a routine single-fresh reading
-    (targets = [now]), and the one-time gap-fill script (targets = the days
-    between an old point and now) -- all the same logic, just a different
-    target list.
+    (targets = N consecutive calendar days back), a routine top-up
+    (targets = today's midnight, and any other day not yet covered), and a
+    manual deepen/catch-up (targets = a larger N days back) -- all the same
+    logic, just a different (already covered-day-filtered) target list.
     """
     earliest_ts = min(targets)
     lp_cache: dict = {}
@@ -207,18 +263,23 @@ def cmd_fetch(args) -> int:
     bf = C.Blockfrost(env, verbose=not args.quiet)
     db_url = load_database_url(args.env_file)
 
+    tip = bf.latest_block()
+    now = tip["time"]
+    today_midnight = (now // C.DAY) * C.DAY
+    print(f"chain tip {now} (height {tip['height']}) -- today = {today_midnight} UTC")
+
+    max_lookback = max(args.target_days, args.new_pool_days)
+    since_ts = today_midnight - max_lookback * C.DAY
+
     with psycopg.connect(db_url) as conn:
         pools = load_pools_from_db(conn)
         latest = load_latest_snapshots_from_db(conn)
+        covered = load_covered_days_from_db(conn, since_ts)
     print(f"{len(pools)} pool(s) in the registry, {len(latest)} with prior state\n")
-
-    tip = bf.latest_block()
-    now = tip["time"]
-    print(f"chain tip {now} (height {tip['height']})")
 
     rows: list[dict] = []
     problems: list[str] = []
-    n_live = n_backfilled = n_skip_fresh = n_skip_unverified = 0
+    n_new_pool = n_routine = n_fully_covered = n_skip_unverified = 0
 
     for pool in pools:
         venue = C.VENUES[pool.venue]
@@ -231,41 +292,55 @@ def cmd_fetch(args) -> int:
             continue
 
         last = latest.get(pool.identity)
-        if last is None:
-            print(f"[{pool.label}] no prior snapshot -- backfilling {args.backfill_days} day(s)")
-            # range(N + 1), not range(N): N days of *spread* needs offsets
-            # 0..N (N+1 points) -- range(N) alone tops out at N-1 days back,
-            # one day short of what a caller asking for "N days" expects.
-            targets = [now - i * C.DAY for i in range(args.backfill_days + 1)]
-            rows.extend(collect_snapshots(bf, pool, venue, targets, "backfill",
-                                          problems, verbose=not args.quiet))
-            n_backfilled += 1
+        is_new = last is None
+        days = args.new_pool_days if is_new else args.target_days
+        source = "backfill" if is_new else "live"
+
+        # range(N + 1), not range(N): N days of *spread* needs offsets 0..N
+        # (N+1 points) -- range(N) alone tops out at N-1 days back, one day
+        # short of what a caller asking for "N days" expects.
+        nominal_targets = [today_midnight - i * C.DAY for i in range(days + 1)]
+        already_covered = covered.get(pool.identity, set())
+        targets = [t for t in nominal_targets if t not in already_covered]
+
+        if not targets:
+            print(f"[{pool.label}] all {len(nominal_targets)} target day(s) already "
+                  f"covered -- skipping, no Blockfrost calls spent")
+            n_fully_covered += 1
             continue
 
-        # Cheap pre-check, no Blockfrost call: `now` is fetched once for the
-        # whole run and can only ever be >= any state a real read would find,
-        # so if wall-clock time alone hasn't advanced 0.5 days, no on-chain
-        # read could change that conclusion.
-        best_case_days = (now - last["ts"]) / C.DAY
-        if best_case_days < 0.5:
-            print(f"[{pool.label}] last snapshot {best_case_days:.2f}d ago -- too "
-                  f"soon even in the best case, skipping Blockfrost calls")
-            n_skip_fresh += 1
-            continue
-
-        print(f"[{pool.label}] venue={venue.name}")
-        new_rows = collect_snapshots(bf, pool, venue, [now], "live", problems,
+        verb = "backfilling" if is_new else "fetching"
+        print(f"[{pool.label}] {verb} {len(targets)}/{len(nominal_targets)} "
+              f"target day(s) (rest already covered)")
+        new_rows = collect_snapshots(bf, pool, venue, targets, source, problems,
                                       verbose=not args.quiet)
-        if new_rows:
-            fresh = Decimal(new_rows[0]["sqrtk_per_lp"])
-            if fresh < last["sqrtk_per_lp"]:
-                drop = (last["sqrtk_per_lp"] - fresh) / last["sqrtk_per_lp"] * 100
-                problems.append(
-                    f"{pool.label}: sqrt(k)/LP FELL {drop:.6f}% since the last known "
-                    f"reading. Reserve source or LP source may be wrong, or this pool "
-                    f"stopped being constant-product. Do not trust this row.")
+
+        if new_rows and last is not None:
+            # `last` isn't necessarily the immediate chronological predecessor
+            # of new_rows[0]: with calendar-anchored gap-filling, a covered
+            # day in between (e.g. day-3) can get filtered out while an
+            # OLDER day (day-7) still needs fetching, landing new_rows[0]
+            # *before* `last` in real time, not after. Merge and sort by ts
+            # rather than assuming adjacency, so only genuinely-consecutive
+            # pairs get compared.
+            combined = sorted(
+                [{"ts": last["ts"], "sqrtk_per_lp": last["sqrtk_per_lp"]}]
+                + [{"ts": r["ts"], "sqrtk_per_lp": Decimal(r["sqrtk_per_lp"])} for r in new_rows],
+                key=lambda r: r["ts"],
+            )
+            for a, b in zip(combined, combined[1:]):
+                if b["sqrtk_per_lp"] < a["sqrtk_per_lp"]:
+                    drop = (a["sqrtk_per_lp"] - b["sqrtk_per_lp"]) / a["sqrtk_per_lp"] * 100
+                    problems.append(
+                        f"{pool.label}: sqrt(k)/LP FELL {drop:.6f}% between ts={a['ts']} "
+                        f"and ts={b['ts']}. Reserve source or LP source may be wrong. "
+                        f"Do not trust this row.")
+
         rows.extend(new_rows)
-        n_live += 1
+        if is_new:
+            n_new_pool += 1
+        else:
+            n_routine += 1
 
     if rows:
         file_exists = os.path.exists(args.out) and os.path.getsize(args.out) > 0
@@ -277,8 +352,8 @@ def cmd_fetch(args) -> int:
             w.writerows(rows)
         print(f"\nwrote {len(rows)} snapshot row(s) to {args.out}")
 
-    print(f"\n{n_live} ticked, {n_backfilled} backfilled, "
-          f"{n_skip_fresh} skipped (too fresh, no Blockfrost calls spent), "
+    print(f"\n{n_new_pool} new pool(s) backfilled, {n_routine} pool(s) ticked, "
+          f"{n_fully_covered} skipped (fully covered, no Blockfrost calls spent), "
           f"{n_skip_unverified} skipped (unverified venue)")
     print(f"{bf.calls} API calls used this run")
 
@@ -301,9 +376,19 @@ def main() -> int:
                     help="CSV path new rows are written to -- an ephemeral "
                          "hand-off file for ingest-snapshots.mts to consume, "
                          "not a persistent store")
-    ap.add_argument("--backfill-days", type=int, default=7,
-                    help="how many individual daily snapshots to fetch "
-                         "backward from now when a pool has no prior history")
+    ap.add_argument("--target-days", type=int, default=7,
+                    help="how many consecutive UTC-midnight-anchored days "
+                         "back (from today) an already-tracked pool should "
+                         "have coverage for. Days already covered cost zero "
+                         "Blockfrost calls, so this is safe to raise for a "
+                         "manual deepen/catch-up without worrying about "
+                         "cost -- not sized for daily 'spread', sized so "
+                         "manual (pre-scheduler) runs don't need to track "
+                         "exactly when this last ran")
+    ap.add_argument("--new-pool-days", type=int, default=35,
+                    help="how many consecutive UTC-midnight-anchored days "
+                         "back to backfill when a pool has no prior "
+                         "snapshot at all")
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args()
     return cmd_fetch(args)

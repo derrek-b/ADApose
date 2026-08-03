@@ -140,14 +140,18 @@ current direction.** For the archived app's own toolchain (Aiken, Node/TS —
 useful only if reviving `legacy/`, not for current work), see
 `legacy/README.md`.
 
-## Critical toolchain fact (carries forward, nothing built against it yet)
+## Critical toolchain fact (now proven in `web/`, not just carried forward)
 
-When Cardano tx-building code gets written for the current direction, it
-should use **@spacebudz/lucid v0.20 (SpaceBudz Lucid), NOT Lucid Evolution**
-— @minswap/sdk's API is built on SpaceBudz Lucid (decision D7), and nothing
-about the pivot changes that. It's published on JSR (`npm:@jsr/spacebudz__lucid`,
-needs a `.npmrc` pointing `@jsr` at `https://npm.jsr.io`, same as `legacy/executor/`
-had). Don't reach for lucid-evolution or lucid-cardano.
+`@spacebudz/lucid` v0.20 (SpaceBudz Lucid), **NOT Lucid Evolution**, is what
+Cardano-facing code in the current direction uses — @minswap/sdk's API is
+built on SpaceBudz Lucid (decision D7), and nothing about the pivot changes
+that. It's published on JSR (`npm:@jsr/spacebudz__lucid`, needs a `.npmrc`
+pointing `@jsr` at `https://npm.jsr.io`, same as `legacy/executor/` had).
+Don't reach for lucid-evolution or lucid-cardano. **Proven working** in
+`web/`'s wallet-connect feature (CIP-30 discovery, `enable()`, address
+decoding) — see `docs/decisions.md` D29 addenda (2026-08-03) for the
+Turbopack/WASM bundler specifics and the CIP-30 `isEnabled()` gotcha found
+along the way.
 
 ## Architecture
 

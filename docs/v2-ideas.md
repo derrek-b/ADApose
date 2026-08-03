@@ -106,3 +106,40 @@ binding constraint in practice (not just a design-phase consideration) — the
 lower-commitment interim step being a paid Blockfrost/Koios tier first — or
 the wallet/tx-building layer's own Kupo need materializes, making shared
 infrastructure worth building once for both purposes.
+
+## DexHunter as a non-custodial swap-routing dependency, for a future zap-less venue
+
+**Idea:** for a DEX venue with no native single-sided/virtual-swap deposit
+mechanism, route the swap leg of a "swap-then-deposit" zap-in through
+DexHunter's aggregation rather than building venue-specific swap logic
+directly. DexHunter is itself non-custodial — a routing layer, not a vault —
+so a transaction built against it can still send every output straight to
+the user's own address or their individual vault, preserving D27's
+no-output-to-us invariant exactly as using a single DEX directly does.
+
+**Not needed for v1's two venues.** Checked against `docs/dex-adapters.md`'s
+own research: Minswap already supports any-ratio (including single-sided)
+deposits in one order via its virtual-swap quadratic solve; WingRiders
+auto-swaps a true single-sided deposit natively, and its one real gap
+(two-sided-imbalanced) is already resolved by splitting into two orders, not
+an external swap. DexHunter only becomes relevant once a third venue is
+added that genuinely lacks any internal zap mechanism of its own.
+
+**Two composition shapes, not one:** if DexHunter's chosen route only
+touches atomic AMM-style swaps, swap + deposit can likely be one atomic,
+single-signature transaction; if the route includes a batched/order-book
+venue, it becomes two sequential transactions (swap, wait for batcher fill,
+then deposit) instead — still fully non-custodial (the intermediate output
+sits in the user's own UTXO throughout), just not atomic.
+
+**Known cost:** a dependency on a third party's aggregation API and fee,
+stacked on top of the underlying DEX's own trading fee and ADApose's own
+execution fee (`decisions.md` D28's Phase 1 revenue model) — worth weighing
+against building the equivalent "best route across known DEXs" logic
+directly against each DEX's own swap contracts once a real zap-less venue
+is actually in scope, rather than depending on a third party's pricing/
+uptime for something structural.
+
+**Revisit trigger:** a DEX venue beyond Minswap/WingRiders gets added
+(2027+ roadmap, D28) that has no native single-sided or virtual-swap
+deposit path of its own.

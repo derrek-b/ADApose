@@ -5,6 +5,29 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### Wallet connection — CIP-30 discovery, modal picker, `@spacebudz/lucid`, persistence (2026-08-03)
+
+- Header's "Connect Wallet" button wired end-to-end: a modal wallet picker
+  (shadcn Dialog) lists detected CIP-30 wallets, connects via
+  `@spacebudz/lucid`'s `selectWalletFromApi`, decodes the bech32 address,
+  and reads (never gates on) the connected network for display.
+- SSR/WASM boundary, three files: `connect-wallet-button-dynamic.tsx` (the
+  only legal place for `next/dynamic(..., {ssr:false})`, confirmed against
+  vendored Next 16 docs) → `connect-wallet-button.tsx` (the real
+  Lucid-touching logic) → `wallet-context.tsx` (pure state, zero Lucid
+  import, even type-only).
+- Address display truncates to `<prefix><4 chars>...<4 chars>` (e.g.
+  `addr1qx2f...8k9v`); network shown as a plain "Mainnet"/"Testnet" label
+  alongside it.
+- Reconnect-on-refresh: a zero-storage design (CIP-30 `isEnabled()` scan)
+  was tried first and disproven in live testing against Lace; shipped as
+  remembering the last-connected wallet's key in `localStorage` (cleared on
+  disconnect) instead. See `docs/decisions.md` D29 addenda (2026-08-03) for
+  both this and the Turbopack/WASM findings.
+- `web/.npmrc` + `@spacebudz/lucid` (`npm:@jsr/spacebudz__lucid@0.20.14`,
+  the same version already proven in `legacy/executor`/`reference/sdk`)
+  added to `web/package.json`.
+
 ### `pool_snapshots` replaces `measurements` — √k pipeline rebuilt end-to-end (2026-08-02)
 
 - **Diagnosed and fixed a real bug:** the old comparison-pair `measurements`

@@ -1571,7 +1571,7 @@ creation/zap-in.
   product needs live server-side refresh on its own schedule, not deferred
   out of uncertainty.
 
-### D29 addendum · WASM + ESM-only friction, flagged for the wallet/tx-building layer, not solved now
+### D29 addendum · WASM + ESM-only friction, flagged for the wallet/tx-building layer, not solved now (resolved 2026-08-03, see addendum below)
 
 Surfaced discussing the frontend foundation, before any wallet/tx-building
 code exists — recorded now specifically so it isn't rediscovered as a
@@ -1735,3 +1735,124 @@ part that must never be hover-only — a value silently wearing the wrong
 label with no visible cue at all is the failure mode; a visible marker whose
 *details* need a hover/focus to reveal is normal, standard footnote-style UI,
 not a regression of the original fix.
+
+### D28 addendum · No vault for the pure aggregator/zap-in — vaults deferred to the managed-strategy layer — 2026-08-02
+
+**Decision:** v1's zap-in sends LP tokens directly to the user's own wallet
+address — no ADApose-owned vault contract, no new on-chain custody surface
+at all for the pure aggregator. `docs/dex-adapters.md`'s own field
+comparison already establishes both Minswap's `successReceiver` and
+WingRiders' `beneficiary` accept any address (script or plain pubkey) —
+"receiver = user's wallet" vs. "receiver = a vault" is a one-line
+difference in the same order-construction code, not two different builds,
+so nothing already scoped for v1 (the adapter/order-construction work
+itself) is wasted either way.
+
+**Refines D28, doesn't reverse it.** D28's own framing — v1 "exercised
+first" builds "the individual-vault custody primitive (D27)... with no
+automation trusted to run on it yet" — read, on reflection, as committing
+to ship an empty vault contract in v1 specifically to prove it out early.
+This addendum narrows that: the multi-DEX adapter/order-construction half
+of that foundation is still built exactly as D28 describes; the
+vault-custody half is deferred until something actually needs per-user
+state to attach to it.
+
+**Why:** Phase 1's own revenue mechanism (D28's staged monetization, an
+execution fee) is collected once, inside the same zap-in transaction — it
+needs no ongoing position record, so no vault. A vault only earns its keep
+once something needs to persist state across time against one user's
+position: a strategy's parameters, or a cost basis to crystallize a
+performance fee against (Phase 2). Building and holding a vault contract
+empty, ahead of that need, is custody-model and audit-surface risk taken on
+before there's a reason for it — the same "don't build ahead of proven
+need" discipline D29 already applied to Redux and the API/DB layer, applied
+one layer down to the vault itself.
+
+**Revisit trigger:** the first managed strategy (Phase 2, D28's "managed
+strategies... revenue layer") is actually being built — that's the point a
+vault (individual, per D27) becomes structurally necessary again, for
+exactly the reasons D27 itself lists (per-user strategy parameters,
+cost-basis-aware fee crystallization).
+
+### D29 addendum · WASM/Turbopack friction resolved — simpler than expected, one real gotcha found — 2026-08-03
+
+**Resolved, not just flagged anymore.** Built the header's wallet-connect
+button end-to-end against `@spacebudz/lucid` (CIP-30 discovery, `enable()`
+handshake, address decoding) — the earlier addendum's "half-day of
+deliberate setup... not solved now" is done. Setup: `web/.npmrc`
+(`@jsr:registry=https://npm.jsr.io`) + `"@spacebudz/lucid":
+"npm:@jsr/spacebudz__lucid@0.20.14"` — the exact version already proven in
+`legacy/executor` and `reference/sdk` — worked with zero surprises.
+
+**Simpler than expected on the WASM side specifically.** The earlier
+addendum cited webpack's `experiments.asyncWebAssembly` as the likely fix
+needed. Next 16's default bundler is Turbopack, not webpack, and Turbopack
+needs **zero explicit config** for `@spacebudz/lucid`'s genuine ESM `.wasm`
+import (`rs_lib/pkg/lucid_core.js:1`, literally `import * as wasm from
+"./lucid_core_bg.wasm"`) — confirmed empirically, not assumed: built once
+with an explicit `turbopack.rules['*.wasm'] = {type:'wasm'}` config, then
+rebuilt with it removed entirely — identical successful output both times,
+and inspecting `.next/static/chunks/` confirmed a real `.wasm` file and a
+`lucid_core`-referencing JS chunk were genuinely emitted (not silently
+skipped). Turbopack auto-detects `.wasm` by extension. Also confirmed:
+legacy/executor's own ESM friction (`"type": "module"`,
+`--experimental-wasm-modules`) is specifically a direct-Node-execution
+concern (it runs via `tsx`, no bundler) — it doesn't transfer to a
+Turbopack-bundled browser context; `web/tsconfig.json`'s existing
+`"module": "esnext", "moduleResolution": "bundler"` needed no changes.
+
+**The one rule that is load-bearing** (confirmed against this repo's own
+vendored Next 16 docs, not memory): `next/dynamic(..., { ssr: false })`
+throws a build error unless called from a Client Component — a Server
+Component can't use it. This is why the wallet-connect UI is split into
+three files rather than living directly in `header.tsx` (which stays a
+Server Component): `connect-wallet-button-dynamic.tsx` is a thin Client
+Component whose only job is that `dynamic(...)` call; the real
+Lucid-touching logic lives in `connect-wallet-button.tsx`, loaded only
+through that boundary, never reaching the server bundle.
+
+**Minor aside, dev-tooling only:** Next's dev-mode error overlay intercepts
+*any* `console.error` call on the page — including ones from third-party
+browser extensions' own internal logging (observed: Eternl logging its own
+rejection internally when a connection popup is cancelled) — and renders it
+as a full "Console Error" overlay, regardless of whether the rejection was
+actually handled by our own code. Confirmed this specific case was harmless
+(our own `try/catch` had already caught it and shown a proper in-app
+message); no suppression mechanism found in the vendored Next docs; doesn't
+appear in production builds.
+
+### D29 addendum · CIP-30 `isEnabled()` unreliable in practice — reconnect uses a remembered wallet key instead — 2026-08-03
+
+**Tried the cleaner design first; it didn't hold up.** CIP-30 defines
+`isEnabled(): Promise<boolean>` per wallet as a read-only, no-popup check of
+whether an origin already has permission — the initial reconnect-on-refresh
+design scanned all detected wallets and silently reconnected to whichever
+reported `true`, specifically to avoid persisting any state of our own (no
+`localStorage`, nothing written to the browser at all).
+
+**Empirically disproven, not a hypothetical concern.** Live-tested against
+Lace: `isEnabled()` resolved `false` immediately after a refresh, even
+though the same origin's permission was independently confirmed still
+valid (manually reconnecting via the picker afterward succeeded with no
+approval popup, proving `enable()` itself still recognized the grant). At
+least Lace's real-world implementation doesn't track persistent per-origin
+permission the way the spec describes for `isEnabled()` — an ecosystem
+compliance gap, not a bug on our side.
+
+**Resolved with the originally-deferred design.** Remember the last-
+connected wallet's key (not its display name) in `localStorage`, cleared on
+explicit disconnect; on mount, call `connectWallet(key)` directly for
+*only* that one remembered wallet. This still fully avoids the thing that
+actually mattered — never popup-prompting a wallet the user hasn't already
+approved — since `enable()` on the one remembered, previously-authorized
+wallet resolves silently; we just can't discover *which* wallet that is
+from the wallet's own signals, so we keep a one-line memory of it
+ourselves. `localStorage` was explicitly discussed and confirmed as not a
+cookie: never transmitted to any server, purely local to the origin.
+
+**Also decided along the way:** a modal wallet picker (shadcn Dialog, `@base-
+ui/react`-backed) ships now rather than a placeholder for the multi-wallet
+case, since real multi-wallet testing (Eternl + Lace both installed) made a
+stub actively block testing — the same "don't build a throwaway now"
+reasoning that also decided against hand-rolling an address decoder in
+favor of using `@spacebudz/lucid` directly for that too.

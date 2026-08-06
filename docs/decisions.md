@@ -1946,3 +1946,65 @@ across 20 pools.
 
 Full mechanism doc: `automation/sqrtk/SQRTK_RUNBOOK.md` section 7
 (rewritten). Toolkit: same file, unchanged path.
+
+## D32 · Minswap adapter: SDK choice, `lib/` npm workspace, client/server split — 2026-08-05
+
+**SDK choice.** `@minswap/sdk` (0.5.0)'s pure deposit-quote math
+(`calculateDepositAmount`/`calculateDepositSwapAmount`, ported and renamed
+`getLPQuote` — the original name reads as an input, not the output it
+returns) is copied into `lib/adapters/minswap-quote.ts`, verified
+byte-identical to `@minswap/sdk-v2`'s own internal, unexported copy of the
+same formula — both by direct code comparison and by empirical bigint
+testing across representative cases. `@minswap/sdk-v2` (1.0.0, actively
+maintained) is what builds the real order later, via `lib/adapters/minswap.ts`.
+The math itself wasn't the deciding factor (it's validator-coupled, so
+identical across both independently-built SDKs) — active maintenance and a
+smaller adapter surface were.
+
+**A real root-level npm workspace turned out to be required, not optional —
+found by hitting it, not decided upfront.** Three separate build walls, each
+with a different root cause:
+1. **Turbopack refuses to load any file outside its own project root**, even
+   with a correctly-resolving tsconfig `@lib/*` alias. `turbopack.root`
+   fixes this but requires the widened root to have its own real, hoisted
+   `node_modules` — tried once against a plain sibling directory with no
+   workspace and it broke Next's own dependency resolution (`@swc/helpers`,
+   RSC manifest errors) before the real fix (a genuine root `package.json`,
+   `"workspaces": ["web", "lib"]`) was in place.
+2. **Client-bundle Node-only code.** Once the workspace was real, importing
+   `lib/adapters/minswap.ts` from a `"use client"` component still pulled
+   `@minswap/sdk-v2` → `@minswap/internal-sdk`'s Node-only WASM tx-builder
+   (real `require('fs')` I/O) into the browser bundle. Researched before
+   guessing at a fix, per explicit instruction — confirmed via multiple
+   independent Next.js GitHub issues this is a known, recurring class of
+   problem, not Turbopack-specific or unique to us. Neither
+   `serverExternalPackages` (solves a *different* problem — keeping a
+   package from being re-bundled for the server) nor stubbing `fs` via
+   `resolveAlias` (ships the whole unused WASM chain to the browser anyway)
+   fit. Fix: split the file into `minswap-quote.ts` (zero imports,
+   browser-safe) vs. `minswap.ts` (`@minswap/sdk-v2`-dependent, server-only),
+   with a new Route Handler (`web/src/app/api/minswap/pool-state/route.ts`)
+   as the only thing the browser talks to for live pool state.
+3. **Server-bundle WASM path breakage.** Even server-side, Turbopack's own
+   bundling of the Route Handler rewrote the native package's runtime path
+   to its `.wasm` binary, producing a literal unsubstituted-path `ENOENT`.
+   This time `serverExternalPackages` was the right tool (confirmed by the
+   symptom matching its actual purpose, not assumed a second time) — added
+   to `web/next.config.ts`.
+
+**Verified end-to-end against live mainnet data through the real running
+Route Handler, not just type-checked or unit-tested:** current ADA/MIN
+reserves returned correctly; the deposit modal's live LP-out estimate
+computes and scales correctly as typed amounts change (confirmed via live
+browser testing, 1/10/100 ADA inputs scaling proportionally).
+
+**Also decided along the way:** `DexAdapter` (`lib/adapters/adapter.ts`) is
+a plain TypeScript interface, not a base class — nothing else in this
+codebase uses classes, and a class hierarchy for a single concrete adapter
+(Minswap, still the only venue) would be premature. Its own JSDoc is the
+spec; no separate `.md` contract, to avoid drift.
+
+Full blow-by-blow — exact error messages, why each tempting alternative was
+wrong, file-by-file detail — lives in `docs/workflows/zap-in.md`'s "`lib/`
+workspace + client/server split" section; this entry is the decision-record
+summary.

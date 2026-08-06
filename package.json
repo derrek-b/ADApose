@@ -1,0 +1,8 @@
+{
+  "name": "adapose",
+  "private": true,
+  "workspaces": [
+    "web",
+    "lib"
+  ]
+}

@@ -1,4 +1,9 @@
-import { Lucid, type Cardano } from "@spacebudz/lucid";
+import { Blockfrost, Lucid, type Cardano } from "@spacebudz/lucid";
+
+const provider = new Blockfrost(
+  process.env.NEXT_PUBLIC_BLOCKFROST_BASE_URL!,
+  process.env.NEXT_PUBLIC_BLOCKFROST_PROJECT_ID!,
+);
 
 declare global {
   interface Window {
@@ -42,7 +47,7 @@ export async function connectWallet(key: string): Promise<ConnectedWallet> {
   const networkId = await api.getNetworkId();
   const network: "mainnet" | "testnet" = networkId === 1 ? "mainnet" : "testnet";
 
-  const lucid = new Lucid({});
+  const lucid = new Lucid({ provider });
   lucid.selectWalletFromApi(api);
   const address = await lucid.wallet.address();
 

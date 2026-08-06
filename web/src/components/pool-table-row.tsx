@@ -1,3 +1,5 @@
+"use client";
+
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -36,9 +38,13 @@ function AprCell({ apr, target }: { apr: FeeApr | null; target: number }) {
 export function PoolTableRow({
   pool,
   striped,
+  walletConnected,
+  onEnterPool,
 }: {
   pool: PoolRow;
   striped?: boolean;
+  walletConnected: boolean;
+  onEnterPool: (pool: PoolRow) => void;
 }) {
   return (
     <TableRow className={striped ? "bg-brand-cardano-blue/10" : undefined}>
@@ -48,7 +54,7 @@ export function PoolTableRow({
       <AprCell apr={pool.feeApr7d} target={7} />
       <AprCell apr={pool.feeApr30d} target={30} />
       <TableCell className="text-center">
-        <Button size="sm" disabled>
+        <Button size="sm" disabled={!walletConnected} onClick={() => onEnterPool(pool)}>
           Enter Pool
         </Button>
       </TableCell>

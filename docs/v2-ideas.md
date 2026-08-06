@@ -125,6 +125,25 @@ auto-swaps a true single-sided deposit natively, and its one real gap
 an external swap. DexHunter only becomes relevant once a third venue is
 added that genuinely lacks any internal zap mechanism of its own.
 
+**WingRiders' two-sided-imbalanced gap independently re-confirmed against
+actual on-chain source (2026-08-04), not just cited secondhand.** Read
+`reference/wingriders-onchain/ConstantProduct.hs`'s `paddLiquidity`
+directly (lines 470-487): both full deposit amounts are merged into pool
+reserves unconditionally (`qtyA = state.qtyA + addA`, `qtyB = state.qtyB +
+addB`), and only `earnedShares = min(earnedSharesFromA, earnedSharesFromB)`
+gets minted — there is no branch anywhere in this function that returns or
+holds back the excess. It isn't "unused balance sits somewhere recoverable"
+— by the time shares are computed, the excess is already inside the pool's
+reserves with no share claim attached, a permanent, unrecoverable donation
+to the pool's *other* LPs. This is source-verified (authoritative — this is
+what consensus enforces for any transaction meeting these constraints), but
+still **not operationally dust-tested** against a live WingRiders agent —
+matches `docs/dex-adapters.md`'s own evidence-tier convention (source-level
+≠ dust-tested). Confirms the "split into two orders" design above is a real
+requirement to build correctly, not just a UX nicety: a naive single
+off-ratio order submitted to WingRiders on a user's behalf would cost them
+real value, silently.
+
 **Two composition shapes, not one:** if DexHunter's chosen route only
 touches atomic AMM-style swaps, swap + deposit can likely be one atomic,
 single-signature transaction; if the route includes a batched/order-book
@@ -143,3 +162,44 @@ uptime for something structural.
 **Revisit trigger:** a DEX venue beyond Minswap/WingRiders gets added
 (2027+ roadmap, D28) that has no native single-sided or virtual-swap
 deposit path of its own.
+
+**Separate angle, parked here rather than as its own entry (2026-08-04): a
+fee-share/rebate partnership, not just a technical dependency.** If we do
+end up routing through DexHunter (or an equivalent aggregator) for a
+zap-less venue, worth exploring whether they'd rebate/split some of their
+own routing fee for volume we send them — a revenue angle layered on top of
+the technical case above, not a substitute for it. Not worth pursuing until
+there's an actual zap-less venue in scope to route for.
+
+## Normalized `tokens` table for asset metadata (decimals, ticker, etc.)
+
+**Idea:** a `tokens` table keyed by asset unit (`policyId+hexname`, or
+`"lovelace"`), storing metadata that's a property of the *asset* itself —
+decimals today, potentially ticker/display name/logo later — instead of
+implicitly re-deriving or re-fetching it once per pool row that happens to
+include that asset.
+
+**Deferred, not abandoned** — surfaced 2026-08-05 while wiring real wallet
+balances into the deposit modal's input step (`docs/workflows/zap-in.md`),
+which needed each asset's decimal count to convert a raw on-chain integer
+into a human-readable number. Went with a live Blockfrost lookup (`GET
+/assets/{unit}`, cached client-side via TanStack Query with `staleTime:
+Infinity` — decimals are immutable once an asset is minted) instead of a
+persisted table:
+- ADA itself never needs a lookup at all (6 decimals is a fixed protocol
+  constant) — the actual duplication risk is only each pool's *second*
+  asset.
+- TanStack Query's own client cache, keyed by unit, already deduplicates
+  repeat lookups for a shared asset within a session — a backend table
+  would only additionally help *cross-session*/*cross-user* repeats, not a
+  proven problem yet.
+- A real table brings design questions not yet justified: what belongs in
+  it beyond decimals, who populates it (the Python discovery pipeline vs. a
+  lazy write from the web app on first lookup), whether existing `pools`
+  rows get backfilled.
+
+**Revisit trigger:** real evidence that repeated cross-session Blockfrost
+calls for the same well-known assets become a cost/latency problem, or
+token-metadata needs grow past decimals alone — e.g. wanting a real
+ticker/logo shown in the deposit modal instead of the current
+string-split-from-`pool.pair` hack used for the amount field labels.

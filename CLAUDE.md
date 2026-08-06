@@ -181,6 +181,17 @@ redeemer set, no invariant list exist yet. What's real:
   comparison page now reads from a real Postgres DB (`current_readings`),
   fed by `automation/`'s pipeline — see `web/README.md` for the current
   data-flow state; this bullet stays high-level on purpose.
+- **`lib/`** — new (D32, 2026-08-05): a root-level npm workspace member
+  alongside `web/`, holding DEX-adapter logic meant to be shared between
+  `web/` and the future executor rather than living inside either —
+  `lib/adapters/adapter.ts` (a minimal `DexAdapter` interface) and Minswap's
+  concrete implementation, split client-safe pure math
+  (`lib/adapters/minswap-quote.ts`) vs. server-only live pool-state fetch
+  (`lib/adapters/minswap.ts`, behind a Next.js Route Handler) — see D32 and
+  `docs/workflows/zap-in.md` for exactly why that split exists and the three
+  build walls hit getting there. The repo root now has its own
+  `package.json`/`package-lock.json` (`"workspaces": ["web", "lib"]`) —
+  `npm install` runs from the repo root, not just inside `web/`.
 - **`automation/sqrtk/`** — the working measurement toolkit (moved out of
   `scripts/` — see Commands above). `sqrtk_core.py` holds the shared,
   mainnet-verified chain-reading primitives (Blockfrost client, the

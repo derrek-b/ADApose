@@ -1,0 +1,10 @@
+{
+  "name": "@adapose/lib",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@minswap/sdk-v2": "^1.0.0",
+    "@minswap/internal-sdk": "^0.1.15"
+  }
+}

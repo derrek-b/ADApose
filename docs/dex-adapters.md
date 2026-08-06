@@ -10,11 +10,21 @@ inside each adapter's own implementation. Written 2026-07-26 while designing
 `web/`'s deposit flow (`docs/workflows/deposit.md`) — generalize to redeem/swap/
 farm adapter surfaces if/when those get the same treatment.
 
+**The actual interface now exists in code, for the current (v1 zap-in) direction:**
+`lib/adapters/adapter.ts`'s `DexAdapter` — deliberately minimal (just
+`getLPQuote`/`getPoolState` today), JSDoc'd in place rather than duplicated
+here in prose, so the interface can't drift from what the code actually
+requires. See `docs/workflows/zap-in.md`'s "`lib/` workspace + client/server
+split" section for why it's split across two files (one browser-safe, one
+server-only) rather than one.
+
 **Evidence status:** WingRiders columns are source-verified at the validator level
 (read from `WingRiders/dex-v2-contracts`, Plutarch/Haskell — `Pool.hs` newly
 vendored 2026-07-26 alongside the D16 files), **not** operationally verified — no
-dust test has been run against their live agent. See `docs/v2-ideas.md` →
-"WingRiders as venue #2" for the prerequisite this creates. Treat WingRiders rows
+dust test has been run against their live agent. See `legacy/docs/v2-ideas.md` →
+"WingRiders as venue #2" for the prerequisite this creates (that entry predates
+the D26 pivot and lives in the archived file now, not the current
+`docs/v2-ideas.md`). Treat WingRiders rows
 as "the contract allows this," the same evidentiary tier Minswap was at before
 D24 resolved it — not "this works in practice."
 

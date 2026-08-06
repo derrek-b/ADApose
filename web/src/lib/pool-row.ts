@@ -10,4 +10,12 @@ export type PoolRow = {
   tvlAda: number | null;
   feeApr7d: FeeApr | null;
   feeApr30d: FeeApr | null;
+  /** Pool identity, from the `pools` registry — needed to build a deposit order (zap-in), not just to display the row. */
+  identity: {
+    trackAsset: string;
+    lpAsset: string;
+    nft: string;
+    assetA: string;
+    assetB: string;
+  };
 };

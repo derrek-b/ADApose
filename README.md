@@ -43,6 +43,7 @@ application (July 2026).
 | `reference/` | Vendored Minswap + WingRiders material: AMM V2 spec, formula.md, farm docs, SDK snapshots — still relevant, the current direction reads the same pools |
 | `docs/` | Design decisions (`decisions.md`, one continuous history — never split when `legacy/` was carved out), the √k brief, parked ideas for the current direction |
 | `web/` | Scaffolded (D29): Next.js + Tailwind/shadcn + TanStack. Pool comparison page now reads from a real Postgres DB (`current_readings`), fed by `automation/`'s pipeline — see `web/README.md` for the current data-flow state |
+| `lib/` | New (D32): root-level npm workspace member alongside `web/` — DEX-adapter logic (`lib/adapters/`) shared between `web/` and the future executor, split into browser-safe pure math vs. server-only chain calls. `npm install` now runs from the repo root, not inside `web/` |
 
 Nothing named `validators/` or `executor/` exists at the repo root right now
 — both moved to `legacy/` whole. If you're looking for them expecting the

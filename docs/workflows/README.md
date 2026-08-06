@@ -38,3 +38,4 @@ mechanism-shaped belongs in one of the docs below instead.
 | [rebalance.md](rebalance.md) | Cross-pool rebalance: crystallize → burn → swap → zap → re-base, guardrails, mid-flight state | drafted, several open points |
 | [deposit.md](deposit.md) | User deposit / share issuance mechanics | stub — the actual deposit flow shape is undecided |
 | [redeem.md](redeem.md) | User redemption / in-kind payout | stub — thin brief coverage, mostly the non-custodial principle |
+| [zap-in.md](zap-in.md) | v1's no-vault Minswap deposit (D28 addendum) — running notes, not a contract doc | in progress |

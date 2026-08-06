@@ -5,6 +5,36 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### Deposit modal: live LP-out estimate, `lib/` npm workspace, Minswap adapter (2026-08-05)
+
+- The modal's "Estimated LP out" placeholder is now real:
+  `lib/adapters/minswap-quote.ts`'s `getLPQuote` (ported from `@minswap/sdk`
+  0.5.0, verified byte-identical to sdk-v2's own internal copy) computes
+  instantly client-side from live pool state fetched via a new Route
+  Handler (`web/src/app/api/minswap/pool-state/route.ts`), which calls
+  `lib/adapters/minswap.ts`'s `getPoolState` (`@minswap/sdk-v2`,
+  server-only).
+- Repo is now a real npm workspace (root `package.json`,
+  `"workspaces": ["web", "lib"]`) — required to satisfy Turbopack's project-
+  root boundary, not just tidiness. See D32 for the three build walls hit
+  and fixed along the way.
+- `web/package.json`'s now-unused direct `@minswap/sdk-v2` dependency
+  removed; `web/package-lock.json` superseded by the new root-level
+  lockfile.
+
+### Deposit modal: real wallet balances + honest loading/error states (2026-08-05)
+
+- `use-wallet-balance`/`use-asset-decimals` wired into the deposit modal's
+  two amount fields — real balances from a live `lucid.utxosAt` fetch, real
+  decimals from a live Blockfrost lookup (`"lovelace"` short-circuited, no
+  network call).
+- Both hooks now also expose `isError` — balance/decimals display is a
+  genuine three-state render (loading / resolved, including a real zero /
+  error) instead of collapsing "zero" and "fetch failed" into the same "—".
+- New `parseTokenAmount` (`web/src/lib/format.ts`) — the decimal-string-to-
+  raw-bigint inverse of the existing `formatTokenAmount`, string-based
+  shifting so large amounts don't lose precision.
+
 ### `fetch_snapshots.py` unified with `migrate_snapshots_gap.py` — calendar-anchored targets (2026-08-03)
 
 - **Diagnosed a real ~1.7-day data gap and a design bug behind it:** targets

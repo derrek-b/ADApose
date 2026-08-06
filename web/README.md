@@ -12,11 +12,12 @@ request time. Full reasoning: `docs/decisions.md` D29.
 First slice, per D28: a cross-DEX LP pool discovery/comparison view (TVL,
 volume, √k-based fee APR) is built and reading real data (Minswap-only so
 far). Wallet connection (CIP-30 discovery, `@spacebudz/lucid`, a modal
-picker) is built and working. Zap-in's input step is also built: the
-deposit modal shows real wallet balances and a live LP-out estimate
+picker) is built and working. Zap-in's input and Review steps are both
+built: the deposit modal shows real wallet balances, a live LP-out estimate
 (`lib/adapters/`, a new root-level npm workspace member alongside `web/` —
-see D32) computed from live Minswap pool state; the review/execution steps
-aren't wired up yet. Reference architecture for the general app shape: FUM
+see D32), a sufficient-funds check, and a Review screen with a real cost
+breakdown (see D33) — only the actual transaction build/sign/submit isn't
+wired up yet. Reference architecture for the general app shape: FUM
 (`~/code/fum_project`, a separate local project, already runs Next for a
 directly comparable DeFi frontend) — its EVM-specific dependencies don't
 transfer. The Cardano wallet/tx-building layer's WASM/ESM/SSR friction,

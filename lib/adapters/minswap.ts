@@ -6,7 +6,12 @@ import {
 } from "@minswap/sdk-v2";
 
 import type { DexAdapter } from "./adapter";
-import { getLPQuote } from "./minswap-quote";
+import {
+  getEstimatedNetworkFeeReserve,
+  getLPQuote,
+  getPlatformCosts,
+  getUnderlyingAssets,
+} from "./minswap-quote";
 
 // Server-only: @minswap/sdk-v2 pulls in @minswap/internal-sdk's WASM
 // tx-builder (real Node-only file I/O), which cannot be bundled for a
@@ -48,4 +53,10 @@ export const getPoolState: DexAdapter["getPoolState"] = async (assetA, assetB) =
       };
 };
 
-export const minswapAdapter: DexAdapter = { getLPQuote, getPoolState };
+export const minswapAdapter: DexAdapter = {
+  getLPQuote,
+  getPoolState,
+  getPlatformCosts,
+  getEstimatedNetworkFeeReserve,
+  getUnderlyingAssets,
+};

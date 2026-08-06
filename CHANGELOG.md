@@ -5,6 +5,45 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### Pool table: show existing LP position per row (2026-08-06)
+
+- Each pool row now shows a small `Coins` icon (only when the connected
+  wallet holds a nonzero LP balance for that pool) whose tooltip reveals
+  the position converted to underlying asset amounts —
+  `getUnderlyingAssets`, a new `DexAdapter` method mirroring `getLPQuote`
+  in reverse (no fee, confirmed against the vendored SDK's withdrawal math).
+- Reserves/decimals only fetched for pools actually held, not every row on
+  every page load. See D34.
+
+### Deposit modal: wallet-balance refetch-on-open fix (2026-08-06)
+
+- Fixed a real bug found via live testing: opening the deposit modal after
+  the page had sat idle (with a wallet balance change happening externally
+  in the meantime) kept showing a stale cached balance until a full page
+  reload. Root cause: `DepositModal` is a single, always-mounted component
+  (only `pool`/`open` toggle as props), so `useWalletBalance`'s query never
+  got a "new observer mounted" trigger to refetch on open. Fixed by
+  explicitly refetching on every open transition.
+- `use-wallet-balance.ts` now exposes `refetch`.
+
+### Deposit modal: sufficient-funds check, Max button, Review step display (2026-08-06)
+
+- The modal's "Continue to Review" gate and Max button are now backed by
+  real numbers: `getPlatformCosts()` (Minswap's real per-order ADA
+  requirements) and `getEstimatedNetworkFeeReserve()` (our own
+  evidence-backed estimate) compose into a single 6 ADA reserve, used
+  consistently for both the sufficient-funds check and the Max button's
+  fill target. Per-asset check model catches genuinely-invalid amounts
+  before the (still-unbuilt) real transaction build would.
+- New Review step: locked-in amounts, the existing LP-out estimate plus a
+  slippage-adjusted minimum, and a real cost breakdown (`getPlatformCosts()`'s
+  two line items, grouped by whether each is genuinely spent or returned
+  with the position, plus ADApose's own 1 ADA execution fee). Network fee
+  shown as an honest placeholder, not a fabricated number — no real
+  transaction gets built yet. "Back"/"Confirm & Sign" (disabled stub)
+  round out the step.
+- See D33.
+
 ### Deposit modal: live LP-out estimate, `lib/` npm workspace, Minswap adapter (2026-08-05)
 
 - The modal's "Estimated LP out" placeholder is now real:

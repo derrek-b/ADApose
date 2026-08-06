@@ -1,9 +1,16 @@
 "use client";
 
+import { Coins } from "lucide-react";
+
+import { getUnderlyingAssets } from "@lib/adapters/minswap-quote";
+
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { formatAda, formatApr } from "@/lib/format";
+import { useAssetDecimals } from "@/hooks/use-asset-decimals";
+import { useMinswapPoolState } from "@/hooks/use-minswap-pool-state";
+import { useWalletBalance } from "@/hooks/use-wallet-balance";
+import { formatAda, formatApr, formatTokenAmount } from "@/lib/format";
 import type { FeeApr, PoolRow } from "@/lib/pool-row";
 
 // The measured window is a floor, never below `target` (pickWindow in
@@ -24,7 +31,7 @@ function AprCell({ apr, target }: { apr: FeeApr | null; target: number }) {
       <Tooltip>
         <TooltipTrigger className="cursor-help border-0 bg-transparent p-0">
           {formatApr(apr)}
-          <sup className="ml-0.5 text-muted-foreground">*</sup>
+          <span className="ml-0.5 align-middle text-[1.2em] leading-none text-amber-500">*</span>
         </TooltipTrigger>
         <TooltipContent>
           Measured over {apr.actualDays.toFixed(1)} days, not {target} -- no
@@ -46,9 +53,48 @@ export function PoolTableRow({
   walletConnected: boolean;
   onEnterPool: (pool: PoolRow) => void;
 }) {
+  const lpBalance = useWalletBalance(pool.identity.lpAsset);
+  const hasPosition = lpBalance.balance !== undefined && lpBalance.balance > 0n;
+
+  // Empty-string unit reuses each hook's existing "disabled" gate -- no hook
+  // API changes needed. Only fetches reserves/decimals once we know there's
+  // an actual position to convert, not for every row on every page load.
+  const { poolState, isError: poolStateError } = useMinswapPoolState(
+    hasPosition ? pool.identity.assetA : "",
+    hasPosition ? pool.identity.assetB : "",
+  );
+  const decimalsA = useAssetDecimals(hasPosition ? pool.identity.assetA : "");
+  const decimalsB = useAssetDecimals(hasPosition ? pool.identity.assetB : "");
+
+  const underlying =
+    hasPosition && poolState
+      ? getUnderlyingAssets({ lpAmount: lpBalance.balance!, pool: poolState })
+      : undefined;
+  const underlyingReady =
+    underlying !== undefined && decimalsA.decimals !== undefined && decimalsB.decimals !== undefined;
+  const underlyingFailed = hasPosition && (poolStateError || decimalsA.isError || decimalsB.isError);
+
+  const [labelA, labelB = "Asset B"] = pool.pair.split("/");
+
   return (
     <TableRow className={striped ? "bg-brand-cardano-blue/10" : undefined}>
-      <TableCell className="text-center">{pool.pair}</TableCell>
+      <TableCell className="text-center">
+        {underlyingReady || underlyingFailed ? (
+          <Tooltip>
+            <TooltipTrigger className="inline-flex cursor-help items-center gap-1 border-0 bg-transparent p-0">
+              {pool.pair}
+              <Coins className="h-3.5 w-3.5 text-amber-500" />
+            </TooltipTrigger>
+            <TooltipContent>
+              {underlyingReady
+                ? `Your position: ${formatTokenAmount(underlying.assetA, decimalsA.decimals)} ${labelA} + ${formatTokenAmount(underlying.assetB, decimalsB.decimals)} ${labelB}`
+                : "You have a position in this pool"}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          pool.pair
+        )}
+      </TableCell>
       <TableCell className="text-center">{pool.venue}</TableCell>
       <TableCell className="text-center">{formatAda(pool.tvlAda)}</TableCell>
       <AprCell apr={pool.feeApr7d} target={7} />

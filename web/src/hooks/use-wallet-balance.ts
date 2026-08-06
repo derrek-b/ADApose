@@ -21,5 +21,5 @@ export function useWalletBalance(unit: string) {
     0n,
   );
 
-  return { balance, isLoading: query.isLoading, isError: query.isError };
+  return { balance, isLoading: query.isLoading, isError: query.isError, refetch: query.refetch };
 }

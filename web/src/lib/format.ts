@@ -27,6 +27,23 @@ export function parseTokenAmount(decimalString: string, decimals: number): bigin
   return BigInt(`${whole || "0"}${paddedFraction}` || "0");
 }
 
+// Inverse-ish of parseTokenAmount. Two uses: filling an editable input (e.g.
+// a "Max" button), where formatTokenAmount's compact notation ("1.2K") isn't
+// a valid <input type="number"> value; and full-precision read-only display
+// (e.g. a review screen) where compact rounding would understate exactly
+// what's about to be submitted. String-based, same precision rationale as
+// parseTokenAmount -- no float division.
+export function formatTokenAmountForInput(raw: bigint, decimals: number): string {
+  if (decimals === 0) return raw.toString();
+  const negative = raw < 0n;
+  const abs = negative ? -raw : raw;
+  const padded = abs.toString().padStart(decimals + 1, "0");
+  const whole = padded.slice(0, padded.length - decimals);
+  const fraction = padded.slice(padded.length - decimals).replace(/0+$/, "");
+  const result = fraction ? `${whole}.${fraction}` : whole;
+  return negative ? `-${result}` : result;
+}
+
 export function formatApr(apr: { value: number; actualDays: number } | null): string {
   if (apr === null) return "—";
   return `${apr.value.toFixed(2)}%`;

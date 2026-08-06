@@ -2008,3 +2008,94 @@ Full blow-by-blow — exact error messages, why each tempting alternative was
 wrong, file-by-file detail — lives in `docs/workflows/zap-in.md`'s "`lib/`
 workspace + client/server split" section; this entry is the decision-record
 summary.
+
+## D33 · Deposit modal: sufficient-funds check, `getPlatformCosts`/`getEstimatedNetworkFeeReserve` split — 2026-08-06
+
+**`FIXED_DEPOSIT_ADA` is real but not a cost — confirmed against the actual
+validator, not the SDK alone.** Every Minswap V2 order unconditionally
+carries an extra 2 ADA (`FIXED_DEPOSIT_ADA`, `reference/sdk/src/types/constants.ts:1175`,
+added in `dex-v2.ts`'s `buildOrderValue` after the per-step-type switch)
+beyond the 2 ADA batcher fee. Read `reference/minswap-amm/order_validation.ak`'s
+`validate_deposit` directly to find out what happens to it: only
+`used_batcher_fee` and the deposit amounts get subtracted from the order's
+value on the way to the success/refund receiver — `FIXED_DEPOSIT_ADA`
+passes straight through either way. The refund path (`get_returnable_value`)
+even says so in a literal code comment: *"Only batcher fee is deducted from
+the order value."* Needs to be available in the wallet to build the tx, but
+it isn't gone — it comes back attached to the LP position (or a refund).
+
+**Two new `DexAdapter` methods, deliberately not merged into one, because
+they're different kinds of claim.** `getPlatformCosts()` returns real,
+protocol-defined amounts (batcher fee + `FIXED_DEPOSIT_ADA`), each tagged
+`refundable` — genuine facts, safe to show on Review as the real cost
+breakdown. `getEstimatedNetworkFeeReserve()` is our own judgment call, not
+a protocol fact — backed by one real observed data point (the D24 test
+wallet's own order-creation tx,
+`fbe69b36a1a1b825bf797694a14d4c36a08d79981f03743b576533af94709584`,
+0.189833 ADA) padded ~5x, used only to size the modal's pre-build
+sufficient-funds check. Review never shows it — the real fee, once a
+transaction actually gets built, supersedes it rather than sitting
+alongside it.
+
+**The hard floor and the Max-button default became the same number
+(6 ADA), not two, after finding a real gap in keeping them separate.**
+Someone typing an amount between "definitely fails" and "safe" would pass
+the modal's gate and then likely fail for a reason the modal could have
+caught. Per-asset check model: for each distinct asset actually leaving
+the wallet, sum everything denominated in it (summed, not independent
+checks against the same balance) — non-ADA pool assets check on their own,
+ADA sums its own deposit-leg amount (if any) plus the 6 ADA reserve, since
+Minswap's fees are always paid in ADA regardless of what's being deposited.
+
+**The D24 test wallet was fully swept (2026-08-06) to fund live testing of
+this feature with a real personal wallet** — tx
+`282cbea1317ca6082b8acf83d52069dff403f6520053fa816c6171ef9a61bbef`,
+confirmed on-chain, both balances independently verified via Blockfrost.
+Kept in `docs/workflows/zap-in.md`'s Testing section rather than deleted —
+may get refunded and reused later.
+
+Full blow-by-blow — exact numbers, the Input-step footer/Max-button design
+reasoning, what's still explicitly deferred (no real transaction yet) —
+lives in `docs/workflows/zap-in.md`'s "Sufficient-funds check, Max button,
+Review display" section; this entry is the decision-record summary.
+
+## D34 · Pool table: existing LP position display — 2026-08-06
+
+**`getUnderlyingAssets`, the mirror image of `getLPQuote`** — ported from
+`@minswap/sdk` 0.5.0's `DexV2Calculation.calculateWithdrawAmount`
+(`reference/sdk/src/calculate.ts`, lines 455-470), same citation approach
+as `getLPQuote`. Read the full file to confirm, not assumed: a plain,
+balanced withdrawal needs only `reserveA`/`reserveB`/`totalLiquidity` and
+the LP amount — no fee, unlike deposit's swap-balancing math. Economically
+correct: a proportional withdrawal doesn't touch the constant-product
+curve or trigger a swap, so there's nothing for the trading fee to apply
+to. (Fees only enter Minswap's *imbalanced*/zap-out withdrawal case, which
+this feature doesn't need — a plain proportional share is the right thing
+for an at-a-glance table row regardless.)
+
+**Two-stage, independently-failable fetch, gated to keep cost bounded.** A
+row's LP balance (`useWalletBalance(lpAsset)`, already deduped to one UTXO
+fetch per wallet address) has to resolve to a confirmed nonzero value
+before the reserves/decimals fetches needed to convert it into underlying
+assets even start — reusing each hook's existing "disabled" gate via an
+empty-string unit rather than changing either hook's API. This means
+reserves/decimals only get fetched for pools the wallet actually holds a
+position in, not all ~20 rows on every page load. Also means the two
+stages can fail independently: a row can know for certain "there's a
+position here" (stage one) while stage two (the conversion) fails on its
+own — worth a distinct fallback note ("You have a position in this pool,"
+no numbers) rather than going silent, raised and agreed during planning
+rather than an oversight caught later.
+
+**UI: a small `Coins` icon (lucide-react, `text-amber-500`), not inline
+subtext, wrapped in the same marker+tooltip idiom `AprCell` already uses
+in this file** — keeps row heights uniform regardless of whether a row has
+a position, and reuses an existing pattern rather than introducing a
+second way of showing "extra detail" in the same table. Emoji considered
+and rejected in favor of a real icon, for consistency with the rest of the
+shadcn/lucide-react UI.
+
+This entry stands alone rather than pointing to a fuller doc — it's a
+self-contained, small feature outside `docs/workflows/zap-in.md`'s scope
+(that doc is specifically the deposit/zap-in flow's running notes; this is
+a display-only feature for existing positions).

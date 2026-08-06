@@ -1,4 +1,4 @@
-<!-- Source: lib/adapters/adapter.ts, lib/adapters/minswap-quote.ts, lib/adapters/minswap.ts, web/src/app/api/minswap/pool-state/route.ts, web/src/components/deposit/deposit-modal.tsx, web/src/hooks/use-minswap-pool-state.ts, web/src/hooks/use-wallet-balance.ts, web/src/hooks/use-asset-decimals.ts, web/src/components/wallet/cip30.ts -->
+<!-- Source: lib/adapters/adapter.ts, lib/adapters/minswap-quote.ts, lib/adapters/minswap.ts, web/src/app/api/minswap/pool-state/route.ts, web/src/components/deposit/deposit-modal.tsx, web/src/hooks/use-minswap-pool-state.ts, web/src/hooks/use-wallet-balance.ts, web/src/hooks/use-asset-decimals.ts, web/src/components/wallet/cip30.ts, web/src/lib/deposit-costs.ts -->
 # Zap-In — implementation notes
 
 **Not a design doc.** Unlike this directory's other files, there's no real design
@@ -315,12 +315,124 @@ against current reserves — shipped 2026-08-05, see "`lib/` workspace +
 client/server split" above.
 
 **Review step:** exact locked-in amounts (both assets, even one left at 0),
-estimated LP out + guaranteed minimum, fee breakdown (network fee estimate +
-Minswap's ~2 ADA batcher fee + our 1 ADA execution fee). "Back" (returns to
+estimated LP out + guaranteed minimum, a cost breakdown. "Back" (returns to
 input, values preserved) and "Confirm & Sign" (builds the tx, triggers the
 wallet popup). No unverified timing claims in the copy (a "~90s" fill-time
 figure was considered and dropped — it's D24's single observed transaction,
-not a real average, and not worth stating as if it were).
+not a real average, and not worth stating as if it were). Shipped as a
+*display*, 2026-08-06 — see "Sufficient-funds check, Max button, Review
+display" below for what actually built and, just as importantly, what's
+still deliberately missing (no real transaction yet).
+
+## Sufficient-funds check, Max button, Review display (2026-08-06)
+
+Minswap's own per-deposit-order ADA requirements turned out to be more than
+"the ~2 ADA batcher fee" this doc previously said — found by reading the
+actual vendored SDK and the on-chain validator, not assumed, after a design
+conversation kept surfacing new edge cases the further it went.
+
+**Two separate ADA amounts, confirmed by reading code, not the same kind of
+number:**
+- **Batcher fee: 2 ADA, genuinely spent.** `BATCHER_FEE_DEX_V2[DEPOSIT]`,
+  `reference/sdk/src/batcher-fee/configs.internal.ts` — flat across every V2
+  order type.
+- **`FIXED_DEPOSIT_ADA`: 2 ADA, but *not* spent.** `reference/sdk/src/types/constants.ts:1175`,
+  added unconditionally to every V2 order's lovelace output in `dex-v2.ts`'s
+  `buildOrderValue` (runs after the per-step-type switch, so it applies
+  regardless of order type despite the name). Checked the actual validator
+  to see what happens to it: `reference/minswap-amm/order_validation.ak`'s
+  `validate_deposit` computes the success-receiver's output value by
+  subtracting only `used_batcher_fee` and the deposit amounts — this 2 ADA
+  is never subtracted, so it passes straight through to whichever output
+  the order resolves to. The refund path (`get_returnable_value`) has this
+  as a literal code comment: *"Only batcher fee is deducted from the order
+  value."* Needs to be available in the wallet to build the tx, but it's
+  not a real cost — it comes back attached to the LP position (or a
+  refund).
+
+**Network fee is genuinely unknowable before a real transaction is built**
+(Cardano fees are deterministic from final tx size + script execution
+units, not a formula to precompute). For a pre-build sufficient-funds check,
+we need an estimate anyway — found real evidence rather than inventing a
+number: the D24 test wallet's own order-creation transaction
+(`fbe69b36a1a1b825bf797694a14d4c36a08d79981f03743b576533af94709584`,
+structurally the same shape — a plain payment to a Minswap script address
+with an inline order datum, no script execution on the creating side) paid
+**0.189833 ADA**. Settled on a **1 ADA** reserve for this — roughly 5x the
+observed fee, comfortable for realistic UTXO-fragmentation variance without
+padding for a multi-order-per-tx scope (e.g. WingRiders' split-order fix
+above) that doesn't exist yet — that scope, if it lands, changes the *whole*
+formula below (each extra order roughly doubles the known costs too, not
+just this margin), not something to pre-pad for now.
+
+**The hard floor and the Max-button default are the *same* number, not
+two.** Keeping them separate left a real gap: someone typing their own
+amount between "definitely fails" and "safe" would pass the Input check and
+then likely fail at the (still-unbuilt) real build step for a reason Input
+could have caught. One number — **6 ADA** for Minswap (2 batcher + 2
+`FIXED_DEPOSIT_ADA` + 1 execution + 1 network estimate) — used for both the
+"Continue to Review" gate and the Max button's fill target on an
+ADA-denominated field.
+
+**Per-asset check model:** for each distinct asset actually leaving the
+wallet, sum everything denominated in it and check against that asset's
+balance — a sum, not independent checks against the same balance (a wallet
+could otherwise pass two checks that both draw on the same ADA without
+having enough for both at once). Non-ADA pool assets check on their own;
+ADA sums its own deposit-leg amount (zero if neither pool asset is ADA)
+*plus* the 6 ADA reserve, since Minswap's fees are always paid in ADA
+regardless of what's being deposited. Implemented in
+`deposit-modal.tsx` — `balanceAda` (a `useWalletBalance("lovelace")` call,
+always made regardless of whether either pool asset is ADA; cheap even when
+redundant with `balanceA`/`balanceB` since the underlying query is keyed by
+address only, so it never costs a second network fetch) is used uniformly
+as *the* ADA balance rather than conditionally picking between the two
+asset-specific balance hooks.
+
+**Where the numbers live — two separate `DexAdapter` methods, deliberately
+not merged:**
+- `getPlatformCosts(): { amount, description, refundable }[]` — real,
+  protocol-defined ADA amounts (batcher fee + `FIXED_DEPOSIT_ADA`), each
+  tagged whether it's genuinely spent. This is what Review displays.
+- `getEstimatedNetworkFeeReserve(): bigint` — our own judgment call, not a
+  protocol fact. Used only to size Input's sufficient-funds check and
+  Max-button target; Review never shows it, since the real fee (once a
+  transaction actually gets built) supersedes it entirely rather than
+  sitting alongside it.
+
+These are different *kinds* of claim (verified fact vs. informed estimate)
+serving different consumers at different moments in the flow, which is why
+they stayed separate rather than folding into one array — an earlier design
+pass considered a single `getPlatformCosts()`-only shape and backed off once
+that distinction became clear. Both are pure/sync (no network I/O), so both
+live in the already-client-safe `lib/adapters/minswap-quote.ts`, not the
+server-only `minswap.ts` — `getPoolState` needs the server split because it
+touches `@minswap/sdk-v2`'s WASM chain; neither of these touches it at all.
+Our own execution fee (1 ADA) stays outside `DexAdapter` entirely — it's
+app-level, not platform-specific — in a new `web/src/lib/deposit-costs.ts`,
+which is also the one place that sums the adapter's numbers with the
+execution fee into the aligned 6 ADA total (three separate call sites
+needed that same total: the validity check, the Max-button target, and the
+footer note).
+
+**Input step's footer deliberately doesn't mention `refundable`.** Input's
+job is explaining why the field can't take the full balance — that answer
+doesn't change based on what's refundable later. Review's job is the real
+accounting, which does need the distinction (grouped there: a "Fees" total
+for non-refundable entries, a separate line for `FIXED_DEPOSIT_ADA` labeled
+as returned with the position). Wording Input's note as "needs to stay
+available" rather than "in fees" also sidesteps needing a disclaimer there
+at all — considered and deliberately dropped rather than omitted by
+oversight.
+
+**Explicitly not built in this pass:** no real Lucid transaction, no
+refresh/expiry mechanism for the numbers shown on Review (that only makes
+sense once there's a real tx to rebuild — building UI chrome for it now
+would be dead weight), no re-verification of balances on entering Review
+beyond what Input already checked. "Confirm & Sign" is a disabled stub, same
+pattern as "Review Deposit" was before this pass. Review's network-fee line
+is an honest placeholder ("calculated when you continue"), not a fabricated
+number.
 
 ## Wallet balances (2026-08-05)
 
@@ -351,10 +463,13 @@ decimals/balance access required when that landed.
 - **Preprod is not usable for this.** Confirmed during D24's own dust test: the
   Minswap preprod batcher sat idle 6+ days, MinTeam's own Discord said preprod
   batcher reliability isn't guaranteed. Test on mainnet, small amounts.
-- **A funded mainnet test wallet already exists**, left over from D24:
+- **The D24 mainnet test wallet is now empty, swept 2026-08-06** —
   `addr1qym42lkqgy98vmplxw0gdp7fzw0qzzdk0kxryaqer9hygy8ha68cv80hk5yt9mrs2r20k4rht5r8gdm3hupjpg287zps3qztxy`
-  — currently holding ~12.62 ADA + 18,020,218 raw units of Minswap's ADA-MIN
-  LP-V2 token (verified on-chain 2026-08-04, not assumed from the old decisions.md
-  entry). Seed phrase: `legacy/executor/.env.mainnet-spike` (never copied out of
-  that file). Reusable for a live dry run once the build is far enough along —
-  no new dust-test funding needed.
+  held ~12.62 ADA + 18,020,218 raw units of Minswap's ADA-MIN LP-V2 token
+  (verified on-chain 2026-08-04) but was fully swept to a personal wallet
+  (tx `282cbea1317ca6082b8acf83d52069dff403f6520053fa816c6171ef9a61bbef`,
+  confirmed on-chain, both balances independently verified via Blockfrost)
+  to fund manual testing of the deposit modal's sufficient-funds check. Kept
+  here rather than deleted — may get refunded and reused later. Seed phrase:
+  `legacy/executor/.env.mainnet-spike` (never copied out of that file), still
+  valid for this address whenever it's funded again.

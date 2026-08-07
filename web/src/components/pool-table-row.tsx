@@ -2,13 +2,13 @@
 
 import { Coins } from "lucide-react";
 
-import { getUnderlyingAssets } from "@lib/adapters/minswap-quote";
+import { getClientAdapter } from "@lib/adapters/registry-client";
 
 import { Button } from "@/components/ui/button";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAssetDecimals } from "@/hooks/use-asset-decimals";
-import { useMinswapPoolState } from "@/hooks/use-minswap-pool-state";
+import { usePoolState } from "@/hooks/use-pool-state";
 import { useWalletBalance } from "@/hooks/use-wallet-balance";
 import { formatAda, formatApr, formatTokenAmount } from "@/lib/format";
 import type { FeeApr, PoolRow } from "@/lib/pool-row";
@@ -59,7 +59,8 @@ export function PoolTableRow({
   // Empty-string unit reuses each hook's existing "disabled" gate -- no hook
   // API changes needed. Only fetches reserves/decimals once we know there's
   // an actual position to convert, not for every row on every page load.
-  const { poolState, isError: poolStateError } = useMinswapPoolState(
+  const { poolState, isError: poolStateError } = usePoolState(
+    hasPosition ? pool.venue : "",
     hasPosition ? pool.identity.assetA : "",
     hasPosition ? pool.identity.assetB : "",
   );
@@ -68,7 +69,7 @@ export function PoolTableRow({
 
   const underlying =
     hasPosition && poolState
-      ? getUnderlyingAssets({ lpAmount: lpBalance.balance!, pool: poolState })
+      ? getClientAdapter(pool.venue).getUnderlyingAssets({ lpAmount: lpBalance.balance!, pool: poolState })
       : undefined;
   const underlyingReady =
     underlying !== undefined && decimalsA.decimals !== undefined && decimalsB.decimals !== undefined;

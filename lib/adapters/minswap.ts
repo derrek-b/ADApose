@@ -10,6 +10,7 @@ import {
   getEstimatedNetworkFeeReserve,
   getLPQuote,
   getPlatformCosts,
+  getSignatureBehavior,
   getUnderlyingAssets,
 } from "./minswap-quote";
 
@@ -53,10 +54,44 @@ export const getPoolState: DexAdapter["getPoolState"] = async (assetA, assetB) =
       };
 };
 
+export const buildDepositOrder: DexAdapter["buildDepositOrder"] = async ({
+  sender,
+  walletUtxoCbors,
+  assetA,
+  assetB,
+  amountA,
+  amountB,
+  slippage,
+}) => {
+  const coinIdA = assetUnitToCoinId(assetA);
+  const coinIdB = assetUnitToCoinId(assetB);
+
+  // Only nonzero entries -- the SDK's own doc comment: "a one-sided entry
+  // is a zap-in." Including a spurious zero for the unused side isn't the
+  // single-sided shape it expects.
+  const amounts: Record<string, bigint> = {};
+  if (amountA > 0n) amounts[coinIdA] = amountA;
+  if (amountB > 0n) amounts[coinIdB] = amountB;
+
+  const { cbor } = await sdk.liquidity.addLiquidity({
+    sender,
+    walletUtxoCbors,
+    // version pinned explicitly -- Minswap has both V1 and V2 pools for
+    // some pairs (confirmed by hitting the real "ambiguous pair" error
+    // without it), and this app is V2-only throughout.
+    pool: { assetA: coinIdA, assetB: coinIdB, version: "V2" },
+    amounts,
+    slippage,
+  });
+  return { cbor };
+};
+
 export const minswapAdapter: DexAdapter = {
   getLPQuote,
   getPoolState,
   getPlatformCosts,
   getEstimatedNetworkFeeReserve,
   getUnderlyingAssets,
+  buildDepositOrder,
+  getSignatureBehavior,
 };

@@ -136,6 +136,10 @@ export const getPlatformCosts: DexAdapter["getPlatformCosts"] = () => [
 export const getEstimatedNetworkFeeReserve: DexAdapter["getEstimatedNetworkFeeReserve"] = () =>
   MINSWAP_ESTIMATED_NETWORK_FEE_RESERVE;
 
+// v2 is Minswap-only, and Minswap settles any combination (single- or
+// two-sided, any ratio) in one order -- no second signature ever needed.
+export const getSignatureBehavior: DexAdapter["getSignatureBehavior"] = () => "always-one";
+
 // Ported from @minswap/sdk 0.5.0's DexV2Calculation.calculateWithdrawAmount
 // (reference/sdk/src/calculate.ts, lines 455-470) -- the direct reverse of
 // calculateDepositAmount, which getLPQuote above was itself ported from.

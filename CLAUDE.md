@@ -192,6 +192,11 @@ redeemer set, no invariant list exist yet. What's real:
   build walls hit getting there. The repo root now has its own
   `package.json`/`package-lock.json` (`"workspaces": ["web", "lib"]`) —
   `npm install` runs from the repo root, not just inside `web/`.
+  `web/` reaches an adapter only through a venue-keyed registry now, not by
+  importing Minswap's files directly — `lib/adapters/registry.ts`
+  (server-only) and `registry-client.ts` (client-safe), same client/server
+  split as above, mirroring the one adapter that's actually registered so
+  far (D37, 2026-08-06).
 - **`automation/sqrtk/`** — the working measurement toolkit (moved out of
   `scripts/` — see Commands above). `sqrtk_core.py` holds the shared,
   mainnet-verified chain-reading primitives (Blockfrost client, the

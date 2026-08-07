@@ -1,4 +1,14 @@
 /**
+ * Whether a zap-in ever needs a second wallet signature on this platform.
+ * "always-one": the platform settles any combination (single- or two-sided,
+ * any ratio) in one order, so a second signature is never needed. A venue
+ * that can't zap in internally would need a separate swap-then-deposit flow
+ * (2 signatures) -- see docs/workflows/zap-in.md's "Multi-leg composition"
+ * section.
+ */
+export type SignatureBehavior = "always-one" | "sometimes-two";
+
+/**
  * The contract every DEX adapter satisfies. Deliberately minimal -- covers
  * only what's actually needed today (the deposit modal's live quote). Grows
  * as real capabilities (order construction, fill polling) get built, not
@@ -56,4 +66,39 @@ export interface DexAdapter {
     lpAmount: bigint;
     pool: { reserveA: bigint; reserveB: bigint; totalLiquidity: bigint };
   }): { assetA: bigint; assetB: bigint };
+
+  /**
+   * Builds a real, unsigned Minswap V2 deposit order -- server-only, same
+   * reason as getPoolState (needs @minswap/sdk-v2's Node-only WASM chain).
+   * The SDK never signs; this returns raw unsigned CBOR for a later step to
+   * sign, not yet wired up (see docs/workflows/zap-in.md).
+   */
+  buildDepositOrder(input: {
+    sender: string;
+    walletUtxoCbors: string[];
+    assetA: string;
+    assetB: string;
+    amountA: bigint;
+    amountB: bigint;
+    slippage: number;
+  }): Promise<{ cbor: string }>;
+
+  /** Pure, synchronous, no I/O -- see SignatureBehavior above. */
+  getSignatureBehavior(): SignatureBehavior;
 }
+
+/**
+ * The subset of DexAdapter that's pure/no-I/O and safe to import from
+ * client ("use client") code -- everything except getPoolState and
+ * buildDepositOrder, which need @minswap/sdk-v2's Node-only WASM chain and
+ * can only run server-side (see minswap.ts's own header comment). Mirrors
+ * exactly which methods already live in minswap-quote.ts vs minswap.ts.
+ */
+export type ClientSafeDexAdapter = Pick<
+  DexAdapter,
+  | "getLPQuote"
+  | "getPlatformCosts"
+  | "getEstimatedNetworkFeeReserve"
+  | "getUnderlyingAssets"
+  | "getSignatureBehavior"
+>;

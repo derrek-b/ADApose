@@ -203,3 +203,37 @@ calls for the same well-known assets become a cost/latency problem, or
 token-metadata needs grow past decimals alone — e.g. wanting a real
 ticker/logo shown in the deposit modal instead of the current
 string-split-from-`pool.pair` hack used for the amount field labels.
+
+## Richer insufficient-funds diagnostics (cause-bucketing, itemized total)
+
+**Idea:** when a real deposit build fails with `InsufficientBalanceError`,
+go beyond "which asset, how much short" (what's shown today,
+`docs/workflows/zap-in.md`) to a fuller diagnosis: bucket the SDK's own
+`InsufficientBalanceCause` enum (`@minswap/internal-sdk`, real and
+finite — `INPUTS`, `COLLATERAL`, `CHANGE`, `CHANGE_SPLIT`, `FEES`,
+`OUT_CHANGE`, `OUT_FEE`) into a small number of user-facing categories
+(e.g. min-ADA/UTxO-value family vs. fee family vs. "just not enough"), and
+show an itemized "total required" breakdown — fixed costs + the shortfall
+itself as a line item — instead of one sentence.
+
+**Deferred, not abandoned** — surfaced 2026-08-05/06 while building the
+current per-asset routed messaging (`docs/workflows/zap-in.md`). Only
+`CHANGE_SPLIT` has been directly confirmed by actually triggering it; the
+rest are reasoned from naming/context, not verified one-by-one, and
+`COLLATERAL` may be unreachable for a plain deposit-order build in the
+first place (creating an order is a payment to a script address, not a
+script spend). Building a bucketing UI on five unverified enum members
+felt like more precision than the current dev stage warrants.
+
+**Confirmed, not just assumed, while investigating this:** no network fee
+is available on a failed build — reproduced directly (`debugInfo.txFee:
+{calculatedFee: '0', cslFee: '0'}` on a genuine `InsufficientBalanceError`)
+— the build aborts during change-out/input selection, before fee
+calculation ever runs. Any future itemized total could never include a
+real fee on the failure path, only the flat platform costs
+(`CostBreakdown`) plus the shortfall figure itself.
+
+**Revisit trigger:** real user confusion with the current single-message
+per-field/bottom approach, or enough live-triggered cause diversity (beyond
+just `CHANGE_SPLIT`) to bucket with confidence instead of guessing at the
+untested enum members' actual behavior.

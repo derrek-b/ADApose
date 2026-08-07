@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@minswap/sdk-v2": "^1.0.0",
-    "@minswap/internal-sdk": "^0.1.15"
+    "@minswap/internal-sdk": "^0.1.15",
+    "cbor": "^10.0.12"
   }
 }

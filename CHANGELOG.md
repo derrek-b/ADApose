@@ -5,6 +5,68 @@ components share one repo lifecycle; split per-component if they diverge.
 
 ## [Unreleased]
 
+### `web/` made platform-agnostic — venue→adapter registry (2026-08-06)
+
+- Fixed a real architectural gap: `PoolTableRow` and `DepositModal` were
+  hardcoded to Minswap at every layer (direct adapter imports, a
+  Minswap-named hook, `/api/minswap/*` routes) even though every pool row
+  already carries a real `venue` string. Latent, not yet visibly broken
+  (only Minswap data exists today), but would silently misroute the moment
+  a second venue's rows appeared.
+- New venue registry: `lib/adapters/registry.ts` (server-only, full
+  `DexAdapter`) and `registry-client.ts` (client-safe subset, new
+  `ClientSafeDexAdapter` type) — both throw a clear error on an
+  unregistered venue instead of falling back silently.
+- Routes generalized and moved: `/api/minswap/pool-state` →
+  `/api/pool-state`, `/api/minswap/build-deposit` → `/api/build-deposit`,
+  both taking `venue` and dispatching through the registry. Hook renamed
+  `useMinswapPoolState` → `usePoolState(venue, assetA, assetB)`.
+- New `DexAdapter` method `getSignatureBehavior()`, replacing a hardcoded
+  lookup table that lived directly in the deposit modal.
+- Scoped to the dispatch mechanism only — still one registered adapter
+  (Minswap). See D37.
+
+### Insufficient-funds handling redesigned — server-side retry loop, routed messaging (2026-08-06)
+
+- The flat 6 ADA reserve estimate (previous entry below) was proven wrong
+  by a real "change_split" failure on a wallet with a single UTXO holding
+  both ADA and an LP token. Replaced: Max now means full wallet balance,
+  the real build happens on Preview itself, and its result is the only
+  authority — no more pre-build estimate.
+- One correction from a single failed build wasn't always enough either —
+  confirmed live that fixing one shortfall can trigger a different one at
+  the reduced amount. The retry now runs server-side in
+  `build-deposit/route.ts`, bounded at 5 rounds per request.
+- Error messaging routes by which asset the SDK's error actually names,
+  not an assumption that any shortfall is about ADA — closes a real gap
+  where a token/token pool's ADA-driven shortfall fell through to a raw
+  technical message.
+- Fixed a real bug caught in live testing: a successful-but-server-adjusted
+  build was silently rewriting the input fields with no indication to the
+  user. Review now shows an explicit "requested → adjusted" note when this
+  happens.
+- Input step simplified: cost breakdown moved to Review-only, the
+  balance-sufficient check is now advisory (not a hard gate — staleness
+  can cut either direction). A single step-aware Refresh button in the
+  footer replaced two separate refresh affordances.
+- Deferred cause-bucketing/itemized-total scope recorded in
+  `docs/v2-ideas.md`. See D36.
+
+### Real deposit transaction build wired up end-to-end (2026-08-06)
+
+- Minswap V2 order construction (`LiquidityModule.addLiquidity`) returns
+  real unsigned CBOR; wallet UTXOs gathered client-side, no Kupo needed.
+- Real network fee read directly from the built CBOR via the generic
+  `cbor` package (`lib/tx-fee.ts`) — both Cardano-Serialization-Lib
+  variants fail on Conway-era CBOR tag 258 ("set" encoding) for
+  transaction inputs.
+- Fixed `RemoteApiShutdownError`, a real wallet-extension-channel failure
+  with no reliable proactive detection — the wallet now reconnects
+  unconditionally before every build attempt rather than reactively after
+  a failure.
+- 30-second TTL on a built quote, with a countdown shown on Review.
+- See D35.
+
 ### Pool table: show existing LP position per row (2026-08-06)
 
 - Each pool row now shows a small `Coins` icon (only when the connected

@@ -2099,3 +2099,162 @@ This entry stands alone rather than pointing to a fuller doc — it's a
 self-contained, small feature outside `docs/workflows/zap-in.md`'s scope
 (that doc is specifically the deposit/zap-in flow's running notes; this is
 a display-only feature for existing positions).
+
+## D35 · Real deposit transaction build wired up end-to-end — 2026-08-06
+
+**Minswap V2 order construction via `@minswap/sdk-v2`'s `LiquidityModule.addLiquidity`**
+— never signs, returns raw unsigned CBOR for a later step to sign. Needs
+`version: "V2"` explicit in the pool ref: hit a real "ambiguous pair —
+multiple pools across versions" error without it, since Minswap has both
+V1 and V2 pools for some pairs (e.g. ADA/MIN). No Kupo/RpcProvider needed —
+wallet UTXOs gathered client-side (`lucid.wallet.getUtxos()`) and
+re-encoded to CIP-30's raw-CBOR shape via SpaceBudz Lucid's
+`Codec.encodeUtxo`, passed as `walletUtxoCbors` directly.
+
+**CBOR tag 258 ("set" encoding, Conway-era tx inputs) breaks both
+Cardano-Serialization-Lib variants.** `@minswap/cardano-serialization-lib-nodejs`
+and `@emurgo/cardano-serialization-lib-nodejs` both threw `Deserialization
+failed... expected 'Array' byte received 'Tag'` on a real transaction,
+regardless of version. Fixed with the generic `cbor` npm package instead
+(`lib/tx-fee.ts`: `decodeFirstSync(buf)[0].get(2)` reads the transaction
+body's fee field — CDDL map key 2, a stable ledger field — without needing
+to understand the tag-258 semantics at all). Verified against a real
+mainnet transaction's independently-confirmed fee. Deliberately
+platform-agnostic, not Minswap-specific, so it lives in `lib/tx-fee.ts`,
+not an adapter file.
+
+**`RemoteApiShutdownError` (`@cardano-sdk/web-extension`) — a real wallet-
+extension-channel failure, reactive-detection only.** Root cause theory:
+Chrome/Brave Manifest V3 extension service workers can be torn down after
+inactivity, invalidating a held `api` object reference — no reliable
+proactive "is this channel alive" check exists. Extensive live timing
+testing found the failure window inconsistent (same nominal conditions —
+sidebar open/closed, wait duration — produced both pass and fail across
+trials), ruling out a targeted heartbeat/keep-alive fix as anything but
+redundant complexity. **Fixed: reconnect the wallet (`connectWallet`,
+silent for an already-authorized origin on Lace) unconditionally before
+every build attempt, not reactively after a failure.** Costs nothing extra
+(pure browser-to-extension communication, no Blockfrost/server round-trip)
+even on the common case where the old connection was still fine. Side
+benefit: since the reconnect now lives inside the retried function itself,
+TanStack Query's existing retry mechanism became correct for transient
+failures too — each retry gets a fresh connection, not a possibly-dead one.
+
+**30-second TTL on a built quote** (`BUILD_TTL_MS`), countdown shown on
+Review — a quoted network fee can go stale, and the modal says so rather
+than silently letting an old number sit next to a Confirm button.
+
+Full blow-by-blow lives in `docs/workflows/zap-in.md`; this entry is the
+decision-record summary.
+
+## D36 · Insufficient-funds handling redesigned twice — 2026-08-06
+
+**First redesign: the flat 6 ADA reserve (D33) was proven wrong by live
+reproduction, not just theorized.** A real wallet with a single UTXO
+holding both ADA and an LP-V2 token together triggers a "change_split"
+cost (an extra required change output) the flat estimate never accounted
+for — missing exactly 156,347 lovelace in the reproduced case. Bumping the
+constant was explicitly rejected ("our 6 number doesn't always work
+either. No guarantee 7 will... I'm not sure the right plan is to try to
+out-think the system"). Replaced entirely: **Max means full wallet
+balance**, standard convention rather than an estimate; the real build
+happens on Preview itself, not a pre-check; a real build's success or
+failure is the only authority.
+
+**Second redesign: one correction from a single failed build isn't always
+enough, confirmed by direct reproduction.** Reducing a 12.12 ADA deposit by
+the first shortfall (`cause: "change"`) still failed on the very next
+attempt with a *different* shortfall (`cause: "change_split"`) — coin
+selection reshapes around the smaller requested amount. Fixed by moving
+the retry loop server-side (`build-deposit/route.ts`, bounded at 5 rounds)
+instead of one client-driven correction per Preview click — all rounds
+reuse the same wallet UTXO snapshot from the one request, since nothing
+about the wallet changes until a transaction actually submits.
+
+**Message routing corrected: "any insufficient-funds error is about ADA"
+was an overstated assumption, not a rule.** A stale client-side balance
+check (fetched once, not re-verified) could in principle let a genuinely
+non-ADA shortfall reach a real build. Messaging now routes on which asset
+the SDK's `InsufficientBalanceError.asset` actually names, not an
+assumption about pool composition — the previously-unbuilt case (shortfall
+matches neither pool asset, i.e. ADA needed for fees/change in a
+token/token pool) now gets its own bottom-of-modal message with buffer
+language, instead of falling through to a raw technical string.
+
+**A real bug shipped and was caught in live testing, not review.** Syncing
+the input fields to the server-adjusted amounts after a successful-but-
+corrected build was done with zero visible acknowledgment to the user —
+caught directly ("we are changing the users input with 0 acknowledgement").
+Fixed with an explicit note on Review comparing requested vs. adjusted
+amounts, sourced from the same build-result object rather than re-derived
+from separately-synced state, so it can't drift out of sync with what it
+describes.
+
+**Input step simplified alongside this.** `CostBreakdown` removed from
+Input entirely (Review-only now — "just deposit amounts, slippage, and
+estimated LP"). Balance-insufficient check made advisory rather than
+gating: staleness cuts both directions (the real balance could have gone
+up or down since last fetched), so a hard block risks incorrectly
+preventing an attempt that would've actually succeeded. A single
+step-aware Refresh button (footer, bottom-left) replaced both the implicit
+refetch-on-open and a separate button embedded in Review's fee row —
+refreshes wallet balance + pool state on Input, re-runs the real build on
+Review.
+
+**Deferred, recorded in `docs/v2-ideas.md` rather than built now:**
+cause-bucketing the SDK's full `InsufficientBalanceCause` enum
+(`INPUTS`/`COLLATERAL`/`CHANGE`/`CHANGE_SPLIT`/`FEES`/`OUT_CHANGE`/`OUT_FEE`
+— only `CHANGE_SPLIT` directly confirmed by triggering it), an itemized-
+total presentation. Confirmed while investigating: no network fee is ever
+available on a failed build — it aborts during coin selection, before fee
+calculation runs.
+
+## D37 · `web/` made platform-agnostic — venue→adapter registry — 2026-08-06
+
+**Finding: `web/` was Minswap-hardcoded at every layer despite already
+having the data to not be.** `PoolRow.venue` (from `getPoolRows()`,
+`web/src/lib/pool-data-adapter.ts`) already carried a real per-row venue
+string, but `PoolTableRow` and `DepositModal` imported
+`@lib/adapters/minswap-quote` directly and called a Minswap-named
+hook/route unconditionally — neither ever read `pool.venue`. Confirmed
+latent, not yet visibly broken (only Minswap data exists in
+`pools`/`current_readings` today; WingRiders tracking is deliberately
+deferred, per this file's own `CLAUDE.md` note) but structurally real: the
+moment a second venue's rows appeared, `PoolTableRow` would call Minswap's
+pool-state API with that venue's asset pair — 404ing, or worse, silently
+returning a coincidentally-matching Minswap pool's wrong data. Confirmed
+this wasn't reversing a prior deliberate decision: the only related note
+in this file (`DexAdapter` as a plain interface, not a class hierarchy —
+"premature" with one venue, near D32) is about class-vs-interface design,
+not about deferring venue dispatch.
+
+**Fix: a venue registry, split client/server exactly like the existing
+`minswap.ts`/`minswap-quote.ts` split** (the server half needs
+`@minswap/sdk-v2`'s Node-only WASM chain, can't bundle for a browser) —
+`lib/adapters/registry.ts` (server-only, `Record<string, DexAdapter>`,
+`getAdapter(venue)`) and `registry-client.ts` (client-safe,
+`Record<string, ClientSafeDexAdapter>`, a new `Pick<DexAdapter, ...>` type
+covering exactly the pure/no-I/O methods). Both throw a clear `No adapter
+registered for venue "X"` on a miss rather than silently falling back —
+correct today since an unregistered venue can't currently reach either
+registry, revisited if that stops being true.
+
+**Two API routes generalized and moved out of `/api/minswap/`:**
+`/api/pool-state` and `/api/build-deposit`, both taking `venue` and
+dispatching through `getAdapter`. The hook became `usePoolState(venue,
+assetA, assetB)`. New `DexAdapter` method `getSignatureBehavior()`
+replaces a hardcoded `Record<string, ...>` lookup table
+(`ZAP_IN_SIGNATURE_BEHAVIOR`) that lived directly in the deposit modal —
+moving that per-venue fact onto the adapter, same as everything else this
+fix touches.
+
+**Explicitly scoped: this builds the dispatch *mechanism* only**,
+registered with the one adapter that actually exists (Minswap). Adding a
+second real adapter (WingRiders) is separate future work — additive once
+this lands (new adapter files + two registry entries), touching none of
+the call sites this fixed.
+
+Verified against live mainnet data through the actual running server, not
+just type-checked: the real ADA/MIN pool state returns correctly through
+the new dispatch path; a deliberately-unregistered venue returns a clean
+400 instead of silently wrong data.
